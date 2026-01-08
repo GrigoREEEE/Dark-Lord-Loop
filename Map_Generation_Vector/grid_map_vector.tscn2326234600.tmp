@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://b2fjapkr5v54e"]
+
+[ext_resource type="Script" uid="uid://2vcegl8v5uwe" path="res://Map_Generation_Vector/grid_map_vector.gd" id="1_1e54l"]
+
+[node name="Grid_Map_Vector" type="Node2D"]
+script = ExtResource("1_1e54l")
+grid_width = 500
+grid_height = 500

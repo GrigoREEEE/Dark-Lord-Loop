@@ -1,0 +1,26 @@
+[gd_scene load_steps=2 format=3 uid="uid://b6cb8spuswk7u"]
+
+[ext_resource type="Script" uid="uid://cr6l53yyt0u65" path="res://Old/Map_Generation_Regions/map.gd" id="1_fd4mf"]
+
+[node name="Map" type="Node2D" node_paths=PackedStringArray("regions_access", "area_access", "biomes_access", "water_access", "map_builder_access")]
+script = ExtResource("1_fd4mf")
+regions_access = NodePath("Area_Regions")
+area_access = NodePath("Areas")
+biomes_access = NodePath("Biomes")
+water_access = NodePath("Water")
+map_builder_access = NodePath("Map_Builder")
+
+[node name="Zones" type="Sprite2D" parent="."]
+
+[node name="Areas" type="Sprite2D" parent="."]
+
+[node name="Biomes" type="Sprite2D" parent="."]
+self_modulate = Color(1, 1, 1, 0.5686275)
+
+[node name="Water" type="Sprite2D" parent="."]
+
+[node name="Map_Builder" type="Node2D" parent="."]
+
+[node name="Area_Regions" type="Node2D" parent="."]
+
+[node name="Biome_Regions" type="Node2D" parent="."]

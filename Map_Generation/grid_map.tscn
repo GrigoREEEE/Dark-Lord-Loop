@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3 uid="uid://b6nh7rj0a8lpw"]
+
+[ext_resource type="Script" uid="uid://6paavh6uutl1" path="res://Map_Generation/grid_map_V4.gd" id="1_j0dar"]
+
+[node name="Grid_Map" type="Node2D"]
+script = ExtResource("1_j0dar")
+cell_size = 1
+grid_width = 500
+grid_height = 500
