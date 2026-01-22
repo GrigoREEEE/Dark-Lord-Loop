@@ -22,7 +22,7 @@ func generate_central_river(width: int, height: int, ocean_mask: Dictionary, res
 	river.river_path.append(river.source)
 	
 	# --- 2. WINDING CONFIGURATION ---
-	_winding_noise.frequency = 0.05 / res_scale 
+	_winding_noise.frequency = 0.03 / res_scale 
 	
 	var current_pos = river.source
 	var step_count = 0

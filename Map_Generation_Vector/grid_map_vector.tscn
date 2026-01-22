@@ -5,9 +5,10 @@
 
 [node name="Grid_Map_Vector" type="Node2D"]
 script = ExtResource("1_1e54l")
+noise_seed = 100
 cell_size = 1
-grid_width = 800
-grid_height = 1200
+grid_width = 400
+grid_height = 600
 
 [node name="Camera2D" type="Camera2D" parent="."]
 script = ExtResource("2_ygiie")

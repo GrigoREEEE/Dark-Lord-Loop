@@ -1,7 +1,7 @@
 extends Node2D
 
 # CONFIGURATION
-@export var noise_seed : int = 50#randi()
+@export var noise_seed : int
 @export var REFERENCE_WIDTH = 400.0
 @export var cell_size: int
 @export var grid_width : int
@@ -24,7 +24,8 @@ var _beach_mask: Dictionary = {} # Dictionary[Vector2, bool]
 var _rivers: Array[River] = []
 
 func _ready():
-	
+	REFERENCE_WIDTH = 400.0
+	noise_seed = randi()
 	var res_scale = int(grid_width/REFERENCE_WIDTH)
 	
 	var river_gen : River_Generator = River_Generator.new()
@@ -34,7 +35,7 @@ func _ready():
 	var erosion : River_Erosion = River_Erosion.new()
 	var ocean_id : Ocean_Identification = Ocean_Identification.new()
 	var beach_id : Beach_Identification = Beach_Identification.new()
-	
+	var river_expander : River_Widener = River_Widener.new()
 	var my_river : River
 	
 	terrain_data = world_gen.generate_height_map(grid_width, grid_height, noise_seed, res_scale)
@@ -42,8 +43,10 @@ func _ready():
 	terrain_data = ice_wall.apply_ice_wall(terrain_data, grid_width, noise_seed, res_scale)
 	
 	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
-	
-	# Generate the River
+	_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 8, res_scale)
+
+		
+	## Generate the River
 	my_river = river_gen.generate_central_river(grid_width, grid_height, _ocean_mask, res_scale)
 	_rivers.append(my_river)
 	
@@ -51,12 +54,17 @@ func _ready():
 	erosion.apply_river_erosion(terrain_data, my_river, 29.0, 30.0, 0.85, 0.2, res_scale) #5, 30, 0.9, 0.1)
 	
 	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
-	_beach_mask = beach_id.get_beach_mask(_ocean_mask, grid_width, grid_height)
+	
 	river_gen.clean_river_path(my_river, _ocean_mask)
+	my_river.create_segments(300)
+	river_expander.widen_river_natural(terrain_data, my_river, _ocean_mask, 30.0, 1000.0)
+
 	_rivers = []
 	_rivers.append(my_river)
-	display_map()
-	save_map_to_png("res://image.png")
+	#_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
+	#_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 8, res_scale)
+	queue_redraw()
+	#save_map_to_png("res://image.png")
 	
 # Configurable settings for visualization
 @export var water_level: float = 0.15 # Elevations below this are drawn as water
@@ -111,11 +119,6 @@ func save_map_to_png(file_path: String):
 	else:
 		print("Map successfully saved to: " + file_path)
 
-
-func display_map():
-
-	queue_redraw()
-
 func _draw():
 	if terrain_data.is_empty() or _ocean_mask.is_empty():
 		return
@@ -131,58 +134,52 @@ func _draw():
 		
 		draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), color)
 
-	# --- 2. DRAW RIVERS (New) ---
-	# We draw these AFTER terrain so they layer on top
+	# --- 2. DRAW RIVERS (Updated) ---
+	# We draw these AFTER terrain so they layer on top.
 	if not _rivers.is_empty():
-		var river_color = Color("4287f5") # Distinct Bright Blue
+		var river_color = Color("2d5e87") #Color("4287f5") # Distinct Bright Blue
 		
 		for river in _rivers:
-			for pos in river.river_path:
-				# We draw the river cell
-				draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), river_color)
+			# Check if segments exist (fallback to path if segments were never generated)
+			if not river.segments.is_empty():
+				# Iterate through every segment (Chunk of the river)
+				for segment in river.segments:
+					# Iterate through every cell in that segment (Path + Widened Banks)
+					for pos in segment:
+						draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), river_color)
+			else:
+				# Fallback: If create_segments() wasn't called, draw the simple path
+				for pos in river.river_path:
+					draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), river_color)
 
 
 func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
-	# --- SPECIAL HIGH PEAK LAYER (> 0.98) ---
-	if e > 0.98: return Color(1.0, 1.0, 1.0, 1.0)
-	
-	# --- BANDED TERRAIN LAYERS ---
-	
-	if e < 0.15:
-		# --- WATER LEVEL LOGIC ---
-		if is_ocean:
-			# Salt Water
-			if e < -0.5: return Color("1e3852") # Deep Ocean
-			return Color("2d5e87")             # Shallow Water
+	if is_ocean:
+		if e < -0.5: 
+			return Color("1e3852") # Deep Ocean
 		else:
-			if e < 0.07:
-				# --- INLAND LAKE / SWAMP LOGIC ---
-				return Color("4b5e32") # Olive Drab / Swamp Green
-			elif e < 0.12:
-				return Color("7a8a4b")
-			else:
-				return Color("5d9e44")
-				 
-	elif e < 0.18:
-		# --- BEACH / BASIN LOGIC ---
-		if is_real_beach:
-			return Color("d6c38e") # Real Sand (Near Ocean)
-		else:
-			# --- INLAND BASIN -> GRASSLAND ---
-			return Color("5d9e44") # Low Grass (Light Green)
-
-	# --- REST OF THE MAP ---
-	elif e < 0.40:
-		# Lowlands
-		if e < 0.28: return Color("5d9e44") 
-		return Color("3e7a2b")             
-		
-	elif e < 0.70:
-		# Highlands / Hills
-		if e < 0.55: return Color("5c5847") 
-		return Color("4d453b")             
-		
+			return Color("2d5e87") # Shallow Water
+	elif is_real_beach and e < 0.18:
+		return Color("d6c38e") # Real Sand (Near Ocean)
 	else:
-		# Mountain / Snow
-		if e < 0.82: return Color("8a9da1") 
-		return Color("cececeff")
+		if e < 0.07:
+			return Color("4b5e32") # Swamp
+		if (e >= 0.07) and (e < 0.12):
+			return Color("7a8a4b") # Marsh
+		if (e >= 0.12) and (e < 0.28):
+			return Color("5d9e44") # Flat Fields
+		if (e >= 0.28) and (e < 0.45):
+			return Color("3e7a2b") # Slightly more bendy fields
+		if (e >= 0.45) and (e < 0.55):
+			return Color("5c5847")  # Small Hills
+		if (e >= 0.55) and (e < 0.70):
+			return Color("4d453b")  # Big Hills
+		if (e >= 0.70) and (e < 0.82):
+			return Color("8a9da1")  # Near Mountains
+		if (e >= 0.82) and (e < 0.98):
+			return Color("c9c9c9ff")  # Peaks
+		if (e >= 0.98):
+			return Color(1.0, 1.0, 1.0, 1.0)  # Absolute peaks
+		else:
+			return Color(0.824, 0.001, 0.824, 1.0)  # Error
+		
