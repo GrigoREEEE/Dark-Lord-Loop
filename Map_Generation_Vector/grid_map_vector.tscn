@@ -1,14 +1,14 @@
-[gd_scene load_steps=3 format=3 uid="uid://b2fjapkr5v54e"]
+[gd_scene format=3 uid="uid://b2fjapkr5v54e"]
 
 [ext_resource type="Script" uid="uid://cl06ehjh28r3y" path="res://Map_Generation_Vector/V2/grid_map_vector_V2.gd" id="1_1e54l"]
 [ext_resource type="Script" uid="uid://d0k8vxsbn2mye" path="res://Map_Generation_Vector/camera_2d.gd" id="2_ygiie"]
 
-[node name="Grid_Map_Vector" type="Node2D"]
+[node name="Grid_Map_Vector" type="Node2D" unique_id=1883286590]
 script = ExtResource("1_1e54l")
 noise_seed = 100
 cell_size = 1
-grid_width = 400
-grid_height = 600
+grid_width = 800
+grid_height = 1200
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="." unique_id=719009694]
 script = ExtResource("2_ygiie")

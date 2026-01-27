@@ -10,10 +10,10 @@ var is_dragging: bool = false
 var drag_start_mouse_pos: Vector2 = Vector2.ZERO
 
 func _unhandled_input(event):
-	# 1. Handle Dragging (Middle Mouse or Right Click)
+	# 1. Handle Dragging (Middle Mouse or Right C=lick)
 	if event is InputEventMouseButton:
 		# Change MOUSE_BUTTON_MIDDLE to MOUSE_BUTTON_LEFT or RIGHT if you prefer
-		if event.button_index == MOUSE_BUTTON_MIDDLE:
+		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				is_dragging = true
 				# Record where the mouse was in the world when we started clicking

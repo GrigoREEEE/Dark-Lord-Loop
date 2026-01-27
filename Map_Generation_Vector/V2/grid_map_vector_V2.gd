@@ -2,6 +2,11 @@ extends Node2D
 
 # CONFIGURATION
 @export var noise_seed : int
+#@export var _rng
+#@export var _winding_noise
+
+@export var debug_river_segments: bool = false
+
 @export var REFERENCE_WIDTH = 400.0
 @export var cell_size: int
 @export var grid_width : int
@@ -26,6 +31,11 @@ var _rivers: Array[River] = []
 func _ready():
 	REFERENCE_WIDTH = 400.0
 	noise_seed = randi()
+	add_fps_counter()
+	var _rng = RandomNumberGenerator.new()
+	var _winding_noise = FastNoiseLite.new()
+	
+	print("noise: %s, rng: %s, winding_noise: %s", [noise_seed, _rng, _winding_noise])
 	var res_scale = int(grid_width/REFERENCE_WIDTH)
 	
 	var river_gen : River_Generator = River_Generator.new()
@@ -43,11 +53,11 @@ func _ready():
 	terrain_data = ice_wall.apply_ice_wall(terrain_data, grid_width, noise_seed, res_scale)
 	
 	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
-	_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 8, res_scale)
+	_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 5, res_scale)
 
 		
 	## Generate the River
-	my_river = river_gen.generate_central_river(grid_width, grid_height, _ocean_mask, res_scale)
+	my_river = river_gen.generate_natural_river(grid_width, grid_height, _ocean_mask, res_scale)
 	_rivers.append(my_river)
 	
 	
@@ -56,9 +66,7 @@ func _ready():
 	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
 	
 	river_gen.clean_river_path(my_river, _ocean_mask)
-	my_river.create_segments(300)
-	river_expander.widen_river_natural(terrain_data, my_river, _ocean_mask, 30.0, 1000.0)
-
+	my_river.create_segments(50)
 	_rivers = []
 	_rivers.append(my_river)
 	#_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
@@ -66,58 +74,9 @@ func _ready():
 	queue_redraw()
 	#save_map_to_png("res://image.png")
 	
+	
 # Configurable settings for visualization
 @export var water_level: float = 0.15 # Elevations below this are drawn as water
-
-func save_map_to_png(file_path: String):
-	if terrain_data.is_empty():
-		push_error("Map data is empty. Generate and display the map first.")
-		return
-
-	# 1. Determine Map Size automatically
-	# We scan the dictionary to find the maximum X and Y coordinates.
-	# This ensures we capture the full map, including the extra Ice Wall height.
-	var max_x = 0
-	var max_y = 0
-	
-	for pos in terrain_data:
-		if pos.x > max_x: max_x = int(pos.x)
-		if pos.y > max_y: max_y = int(pos.y)
-	
-	var width = max_x + 1
-	var height = max_y + 1
-	
-	# 2. Create a new Image
-	var image = Image.create(width, height, false, Image.FORMAT_RGBA8)
-	
-	# 3. Fill the Image pixel by pixel
-	# We use the exact same logic as _draw() to ensure the PNG looks identical.
-	for x in range(width):
-		for y in range(height):
-			var pos = Vector2(x, y)
-			
-			if terrain_data.has(pos):
-				var elevation = terrain_data[pos]
-				
-				# Retrieve the pre-calculated masks
-				var is_ocean = _ocean_mask.get(pos, false)
-				var is_real_beach = _beach_mask.get(pos, false)
-				
-				# Get the color using your existing styling function
-				var color = _get_layered_color(elevation, is_ocean, is_real_beach)
-				
-				image.set_pixel(x, y, color)
-			else:
-				# Fill empty spots (if any) with transparent or black
-				image.set_pixel(x, y, Color.TRANSPARENT)
-	
-	# 4. Save to Disk
-	var error = image.save_png(file_path)
-	
-	if error != OK:
-		push_error("Failed to save image. Error code: " + str(error))
-	else:
-		print("Map successfully saved to: " + file_path)
 
 func _draw():
 	if terrain_data.is_empty() or _ocean_mask.is_empty():
@@ -134,23 +93,34 @@ func _draw():
 		
 		draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), color)
 
-	# --- 2. DRAW RIVERS (Updated) ---
-	# We draw these AFTER terrain so they layer on top.
+# --- 2. DRAW RIVERS ---
 	if not _rivers.is_empty():
-		var river_color = Color("2d5e87") #Color("4287f5") # Distinct Bright Blue
+
+		var base_river_color = Color("2d5e87") 
 		
 		for river in _rivers:
-			# Check if segments exist (fallback to path if segments were never generated)
 			if not river.segments.is_empty():
-				# Iterate through every segment (Chunk of the river)
-				for segment in river.segments:
-					# Iterate through every cell in that segment (Path + Widened Banks)
+				
+				for i in range(river.segments.size()):
+					var segment = river.segments[i]
+					var draw_color = base_river_color
+					
+					# --- DEBUG COLOR LOGIC ---
+					if debug_river_segments:
+						
+						var hue = float(i % 8) / 8.0
+						draw_color = Color.from_hsv(hue, 0.8, 1.0)
+					
 					for pos in segment:
-						draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), river_color)
+						draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), draw_color)
+						
 			else:
-				# Fallback: If create_segments() wasn't called, draw the simple path
+				var path_color = base_river_color
+				if debug_river_segments:
+					path_color = Color.RED 
+					
 				for pos in river.river_path:
-					draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), river_color)
+					draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), path_color)
 
 
 func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
@@ -183,3 +153,14 @@ func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
 		else:
 			return Color(0.824, 0.001, 0.824, 1.0)  # Error
 		
+func add_fps_counter():
+	var canvas_layer = CanvasLayer.new()
+	add_child(canvas_layer)
+	var fps_label = Label.new()
+	canvas_layer.add_child(fps_label)
+	fps_label.position = Vector2(10, 10)
+	fps_label.modulate = Color(0, 1, 0) # Green text
+	get_tree().process_frame.connect(func():
+		var fps = Engine.get_frames_per_second()
+		fps_label.text = "FPS: " + str(fps)
+	)
