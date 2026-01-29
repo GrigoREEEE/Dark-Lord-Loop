@@ -9,6 +9,7 @@ var river_path: Array[Vector2] = []
 var segments: Array[Array] = []
 var segment_flow: Array[float] = []
 var river_mass: Array[Vector2] = []
+var is_proper : bool = true
 
 # New function to partition the river
 func create_segments(chunk_size: int) -> void:
@@ -36,6 +37,8 @@ func create_segments(chunk_size: int) -> void:
 	# If there are leftovers (the end of the river), add them as the final segment
 	if current_segment.size() > 0:
 		segments.append(current_segment)
+
+
 
 # Removes river cells from the last segment if they overlap with the ocean mask.
 # This fixes "spilling" where the river widening algorithm floods the ocean itself.

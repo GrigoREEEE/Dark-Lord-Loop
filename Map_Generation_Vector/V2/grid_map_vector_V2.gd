@@ -2,8 +2,7 @@ extends Node2D
 
 # CONFIGURATION
 @export var noise_seed : int
-#@export var _rng
-#@export var _winding_noise
+
 
 @export var debug_river_segments: bool = false
 
@@ -35,94 +34,123 @@ func _ready():
 	var _rng = RandomNumberGenerator.new()
 	var _winding_noise = FastNoiseLite.new()
 	
-	print("noise: %s, rng: %s, winding_noise: %s", [noise_seed, _rng, _winding_noise])
 	var res_scale = int(grid_width/REFERENCE_WIDTH)
 	
-	var river_gen : River_Generator = River_Generator.new()
 	var world_gen : Terrain_Generator = Terrain_Generator.new()
 	var south_islands : South_Islands = South_Islands.new()
 	var ice_wall : Ice_Wall = Ice_Wall.new()
-	var erosion : River_Erosion = River_Erosion.new()
-	var ocean_id : Ocean_Identification = Ocean_Identification.new()
-	var beach_id : Beach_Identification = Beach_Identification.new()
-	var river_expander : River_Widener = River_Widener.new()
-	var my_river : River
+
 	
 	terrain_data = world_gen.generate_height_map(grid_width, grid_height, noise_seed, res_scale)
 	terrain_data = south_islands.apply_southern_islands(terrain_data, grid_width, grid_height, 150, 15, 60, noise_seed, res_scale)
 	terrain_data = ice_wall.apply_ice_wall(terrain_data, grid_width, noise_seed, res_scale)
 	
+	handle_rivers(res_scale)
+
+	update_map_visuals()
+	#save_map_to_png("res://image.png")
+	
+func handle_rivers(res_scale):
+	var river_gen : River_Generator = River_Generator.new()
+	var erosion : River_Erosion = River_Erosion.new()
+	var ocean_id : Ocean_Identification = Ocean_Identification.new()
+	var beach_id : Beach_Identification = Beach_Identification.new()
+	var river_expander : River_Widener = River_Widener.new()
+	var my_river : River
+	const mouth_segments : int = 3
+	## Check where the ocean abd the beach are
 	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
 	_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 5, res_scale)
+
 
 		
 	## Generate the River
 	my_river = river_gen.generate_natural_river(grid_width, grid_height, _ocean_mask, res_scale)
-	_rivers.append(my_river)
-	
-	
+	## Apply Erosion
 	erosion.apply_river_erosion(terrain_data, my_river, 29.0, 30.0, 0.85, 0.2, res_scale) #5, 30, 0.9, 0.1)
-	
+	## Check where the ocean is again (due to erosion)
 	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
-	
+	## Remove the river from the ocean
 	river_gen.clean_river_path(my_river, _ocean_mask)
-	my_river.create_segments(50)
+	## Break the river into segments
+	my_river.create_segments(20)
+	## Expand the river
+	river_expander.widen_river_wave_based(terrain_data, my_river, _ocean_mask, _beach_mask, mouth_segments, 1.5 * res_scale, 2.5 * res_scale)
+	river_expander.merge_mouth_segments(my_river, mouth_segments)
+	river_expander.expand_delta(terrain_data, my_river, _ocean_mask)
 	_rivers = []
 	_rivers.append(my_river)
-	#_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
-	#_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 8, res_scale)
-	queue_redraw()
-	#save_map_to_png("res://image.png")
-	
-	
+
 # Configurable settings for visualization
 @export var water_level: float = 0.15 # Elevations below this are drawn as water
 
-func _draw():
-	if terrain_data.is_empty() or _ocean_mask.is_empty():
-		return
-		
-	# --- 1. DRAW TERRAIN ---
-	for pos in terrain_data:
-		var elevation = terrain_data[pos]
-		
-		var is_ocean = _ocean_mask.get(pos, false)
-		var is_real_beach = _beach_mask.get(pos, false) 
-		
-		var color = _get_layered_color(elevation, is_ocean, is_real_beach)
-		
-		draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), color)
+# Cache the texture so we don't regenerate it every frame
+var _map_texture: ImageTexture
 
-# --- 2. DRAW RIVERS ---
+func update_map_visuals():
+	# 1. Create a blank image buffer (Fast CPU operation)
+	var img = Image.create(grid_width, grid_height, false, Image.FORMAT_RGBA8)
+	
+	# --- 1. SET TERRAIN PIXELS ---
+	if not terrain_data.is_empty() and not _ocean_mask.is_empty():
+		for pos in terrain_data:
+			# Ensure we don't write outside the image bounds
+			if pos.x < 0 or pos.y < 0 or pos.x >= grid_width or pos.y >= grid_height:
+				continue
+				
+			var elevation = terrain_data[pos]
+			var is_ocean = _ocean_mask.get(pos, false)
+			var is_real_beach = _beach_mask.get(pos, false)
+			
+			var color = _get_layered_color(elevation, is_ocean, is_real_beach)
+			
+			# Set the single pixel
+			img.set_pixel(int(pos.x), int(pos.y), color)
+
+	# --- 2. SET RIVER PIXELS ---
 	if not _rivers.is_empty():
-
-		var base_river_color = Color("2d5e87") 
+		var base_river_color = Color("407badff") #Color("2d5e87")
 		
 		for river in _rivers:
 			if not river.segments.is_empty():
-				
+				# Iterate segments for debug colors
 				for i in range(river.segments.size()):
 					var segment = river.segments[i]
 					var draw_color = base_river_color
 					
-					# --- DEBUG COLOR LOGIC ---
 					if debug_river_segments:
-						
 						var hue = float(i % 8) / 8.0
 						draw_color = Color.from_hsv(hue, 0.8, 1.0)
 					
 					for pos in segment:
-						draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), draw_color)
-						
+						if pos.x >= 0 and pos.y >= 0 and pos.x < grid_width and pos.y < grid_height:
+							img.set_pixel(int(pos.x), int(pos.y), draw_color)
 			else:
+				# Fallback path
 				var path_color = base_river_color
 				if debug_river_segments:
-					path_color = Color.RED 
-					
+					path_color = Color.RED
+				
 				for pos in river.river_path:
-					draw_rect(Rect2(pos * cell_size, Vector2(cell_size, cell_size)), path_color)
+					if pos.x >= 0 and pos.y >= 0 and pos.x < grid_width and pos.y < grid_height:
+						img.set_pixel(int(pos.x), int(pos.y), path_color)
 
+	# 3. Create or Update the GPU Texture
+	# This sends the data to the GPU in one block
+	if _map_texture:
+		_map_texture.update(img)
+	else:
+		_map_texture = ImageTexture.create_from_image(img)
+	
+	# 4. Tell Godot to repaint
+	queue_redraw()
 
+func _draw():
+	# Now _draw is incredibly cheap: it just draws one texture
+	if _map_texture:
+		draw_texture_rect(_map_texture, Rect2(0, 0, grid_width * cell_size, grid_height * cell_size), false)
+
+# --- YOUR EXISTING HELPER (Unchanged) ---
 func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
 	if is_ocean:
 		if e < -0.5: 

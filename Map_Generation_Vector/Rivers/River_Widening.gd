@@ -2,156 +2,262 @@ extends Node
 
 class_name River_Widener
 
-# Configuration for flooding costs
-const COST_BASE: float = 1.0
-const COST_HEIGHT_MULTIPLIER: float = 20.0  # High penalty for going uphill
-const COST_DISTANCE_MULTIPLIER: float = 0.5 # Penalty for getting wide
-const MAX_SEARCH_ITERATIONS: int = 500      # Safety break for while loops
-const BASE_FLOW_GAIN : float = 1.0
-const ITERATIVE_FLOW_GAIN : float = 0.005
-
-
-## Main function to consume and expand the River object
-static func expand_river(river: Object, world_heights: Dictionary) -> void:
-	accumulate_flow(river)
+# Widens the river with special "Lowland Discounts".
+# - beach_mask: Used to prevent mid-river segments from breaching the coastline.
+func widen_river_wave_based(
+	map_data: Dictionary, 
+	river: River, 
+	ocean_mask: Dictionary, 
+	beach_mask: Dictionary,
+	mouth_segments : int,
+	base_flow_gain: float, 
+	flow_increment: float, 
+	flood_cost_base: float = 1.0, 
+	flood_climb_cost: float = 5.0,
+	flood_distance_cost: float = 0.1,
+	climb_tolerance: float = 0.01
+):
 	
-	# 1. Validation and Setup
-	if river.segments.size() != river.river_path.size():
-		push_warning("River segments and path length mismatch. Adjusting...")
-		river.segments.resize(river.river_path.size())
-
-	# A set to keep track of every cell owned by the river to prevent overlap
-	var global_river_cells: Dictionary = {} 
+	river.segment_flow.clear()
 	
-	# Pre-populate global cells with the river spine (center path)
-	for point in river.river_path:
-		global_river_cells[point] = true
+	# Cache path for fast core checks
+	var path_set = {}
+	for pos in river.river_path:
+		path_set[pos] = true
 
-	# Variable to track flow accumulation from source to mouth
-	var current_accumulated_flow: float = 0.0
-
-	# 2. Iterate through every segment
-	for i in range(len(river.segments)):
-		var center_pos: Vector2 = river.river_path[i]
+	var river_cells_set = {}
+	for pos in river.river_path:
+		river_cells_set[pos] = true
+	
+	var directions = [Vector2(0, 1), Vector2(0, -1), Vector2(1, 0), Vector2(-1, 0)]
+	
+	# Pre-calculate the "Safe Zone" threshold
+	# Only segments with index >= start_of_mouth can touch the beach
+	var start_of_mouth = max(0, river.segments.size() - mouth_segments)
+	#var segments_to_expand = max(0, river.segments.size() - 3)
+	
+	for i in range(start_of_mouth):
+		var segment = river.segments[i]
 		
-		# Initialize the segment array if empty
-		if river.segments[i] == null:
-			river.segments[i] = []
+		# Identify Core Cells
+		var core_cells: Array[Vector2] = []
+		for cell in segment:
+			if path_set.has(cell):
+				core_cells.append(cell)
 		
-		# Ensure the center point is part of the segment
-		if not center_pos in river.segments[i]:
-			river.segments[i].append(center_pos)
-
-		# Add new flow to the accumulation (River gets bigger downstream)
-		# We use modulo or a check to prevent index errors if flow array is smaller
-		var flow_add: float = 0.0
-		if i < river.segment_flow.size():
-			flow_add = river.segment_flow[i]
+		var current_budget = base_flow_gain + (float(i) * flow_increment)
+		river.segment_flow.append(current_budget)
 		
-		current_accumulated_flow += flow_add
-		print("Iteration %s, flow is %s" % [i,current_accumulated_flow])
-		# 3. Perform the Flood Fill for this segment
-		_flood_segment(
-			river.segments[i], 
-			center_pos, 
-			current_accumulated_flow, 
-			world_heights, 
-			global_river_cells
-		)
-
-static func accumulate_flow(river: Object) -> void:
-	for i in river.segments.size():
-		river.segment_flow.append((BASE_FLOW_GAIN + ITERATIVE_FLOW_GAIN * i))
-
-## Helper: Floods a single segment based on a flow budget
-static func _flood_segment(
-	segment_cells: Array, 
-	center: Vector2, 
-	flow_budget: float, 
-	world_heights: Dictionary, 
-	global_visited: Dictionary
-) -> void:
-	
-	# Priority Queue logic: Stores [Vector2, cost]
-	# We use a simple array and sort it to act as a priority queue
-	var candidates: Array = []
-	var center_height: float = world_heights.get(center, 0.0)
-	
-	# Add initial neighbors of the center
-	_add_neighbors(center, center, center_height, candidates, world_heights, global_visited)
-	
-	var safety_counter: int = 0
-	
-	# While we have water (budget) and places to go
-	while flow_budget > 0 and not candidates.is_empty():
-		safety_counter += 1
-		if safety_counter > MAX_SEARCH_ITERATIONS:
-			break
-
-		# Sort candidates so the "cheapest" cell is last (for efficient popping)
-		# We sort descending by cost, so pop_back() gives us the smallest cost
-		candidates.sort_custom(func(a, b): return a.cost > b.cost)
+		var river_bed_height = 0.0
+		if not core_cells.is_empty():
+			river_bed_height = map_data[core_cells[0]]
+		elif not segment.is_empty():
+			river_bed_height = map_data[segment[0]]
 		
-		var current_candidate = candidates.pop_back()
-		var pos: Vector2 = current_candidate.pos
-		var cost: float = current_candidate.cost
-		
-		# Check if we can afford this cell
-		if flow_budget >= cost:
-			# Buy the cell
-			flow_budget -= cost
-			segment_cells.append(pos)
-			global_visited[pos] = true
+		# --- OUTER LOOP: WAVES ---
+		while current_budget > 0:
+			var flooded_count_this_wave = 0
+			var candidates = []
+			var candidate_set = {} 
 			
-			# Add this new cell's neighbors to candidates
-			_add_neighbors(pos, center, center_height, candidates, world_heights, global_visited)
+			for cell in segment:
+				for d in directions:
+					var neighbor = cell + d
+					
+					if not map_data.has(neighbor): continue
+					if river_cells_set.has(neighbor): continue
+					if candidate_set.has(neighbor): continue
+					if ocean_mask.get(neighbor, false) == true: continue
+					
+					# --- NEW: BEACH CONTAINMENT CHECK ---
+					# If this tile is a beach, ONLY allow it if we are at the river mouth.
+					if beach_mask.get(neighbor, false) == true:
+						if i < start_of_mouth:
+							continue # Stop! Don't breach the coast mid-stream.
+					
+					# --- 3. CALCULATE COSTS ---
+					var target_height = map_data[neighbor]
+					
+					# --- LOWLAND DISCOUNT LOGIC ---
+					var effective_base_cost = flood_cost_base
+					var effective_dist_cost = flood_distance_cost
+					
+					if (target_height >= 0.07) and (target_height < 0.12):
+						effective_base_cost *= 0.8 
+						effective_dist_cost *= 0.8
+					
+					if (target_height < 0.07):
+						effective_base_cost = 0
+						effective_dist_cost = 0
+					
+					var cost = effective_base_cost
+					
+					# A. CLIMB COST
+					var height_diff = target_height - river_bed_height
+					if height_diff > climb_tolerance:
+						var excess = height_diff - climb_tolerance
+						cost += excess * flood_climb_cost
+					
+					# B. DISTANCE COST
+					var min_dist = 999.0
+					for core in core_cells:
+						var d_val = core.distance_to(neighbor)
+						if d_val < min_dist: min_dist = d_val
+					
+					cost += min_dist * effective_dist_cost
+					
+					candidates.append({
+						"pos": neighbor,
+						"cost": cost
+					})
+					candidate_set[neighbor] = true
+			
+			if candidates.is_empty():
+				break
+			
+			# 4. START FLOODING
+			candidates.sort_custom(func(a, b): return a.cost < b.cost)
+			
+			var limit = min(candidates.size(), 5)
+			
+			for k in range(limit):
+				var best = candidates[k]
+				
+				if current_budget >= best.cost:
+					current_budget -= best.cost
+					
+					segment.append(best.pos)
+					river_cells_set[best.pos] = true
+					flooded_count_this_wave += 1
+				else:
+					current_budget = -1.0 
+					break
+			
+			if current_budget <= 0 or flooded_count_this_wave == 0:
+				break
+				
+# Combines the last 'n' segments of the river into a single "Delta Segment".
+func merge_mouth_segments(river: River, n_segments_to_merge: int):
+	if river.segments.size() < n_segments_to_merge + 1:
+		return # River too short to make a delta
+		
+	var delta_cells: Array[Vector2] = []
+	
+	# 1. Collect all cells from the last N segments
+	# We iterate backwards to pop them off easily
+	for k in range(n_segments_to_merge):
+		var segment = river.segments.pop_back()
+		delta_cells.append_array(segment)
+		
+	# 2. Add the combined cluster back as a single segment
+	# (We reverse the collection order if strictly needed, but for a set of cells it implies no order)
+	river.segments.append(delta_cells)
+	
+	print("Delta created. River now has ", river.segments.size(), " segments.")
+
+# A specialized flood-fill for the Delta.
+# - High budget.
+# - Directional bias (Cheaper to flood downstream).
+# - allowed_to_touch_ocean: It can eat beach/ocean pixels.
+func expand_delta(
+	map_data: Dictionary, 
+	river: River, 
+	ocean_mask: Dictionary,
+	flow_budget: float = 40.0, # Huge budget for the delta
+	climb_cost: float = 10.0,  # Hard to climb up
+	spread_cost: float = 0.5   # Very cheap to spread wide
+):
+	if river.segments.is_empty(): return
+	
+	# The Delta is the LAST segment
+	var delta_segment = river.segments[-1]
+	var delta_root = delta_segment[0] # The point where the river becomes the delta
+	
+	# Track cells
+	var delta_set = {}
+	for cell in delta_segment: delta_set[cell] = true
+	
+	var candidates = []
+	var candidate_set = {}
+	var directions = [Vector2(0, 1), Vector2(0, -1), Vector2(1, 0), Vector2(-1, 0)]
+	
+	# Initialize Frontier
+	for cell in delta_segment:
+		for d in directions:
+			var n = cell + d
+			if not map_data.has(n): continue
+			if delta_set.has(n): continue
+			if candidate_set.has(n): continue
+			
+			# Note: We DO allow Ocean/Beach here, effectively extending land into water
+			
+			candidates.append(n)
+			candidate_set[n] = true
+			
+	# --- DELTA FLOOD LOOP ---
+	while flow_budget > 0 and not candidates.is_empty():
+		
+		# 1. EVALUATE CANDIDATES
+		# We need to pick the "Best" cell to expand the fan.
+		var best_index = -1
+		var best_cost = 9999.0
+		
+		for k in range(candidates.size()):
+			var pos = candidates[k]
+			var height = map_data[pos]
+			
+			# Base Cost
+			var cost = spread_cost
+			
+			# A. DIRECTIONAL BIAS (The Fan Effect)
+			# Calculate vector from Root to Candidate
+			var dist_from_root = delta_root.distance_to(pos)
+			var y_diff = pos.y - delta_root.y
+			
+			# If we are moving North (Upstream), make it EXPENSIVE.
+			# If we are moving South (Downstream), make it CHEAP.
+			if y_diff < 0:
+				cost += 5.0 # Upstream penalty
+			else:
+				cost *= 0.5 # Downstream discount
+				
+			# B. CLIMB COST (Standard)
+			# Deltas form on flatlands. Climbing is hard.
+			# We approximate "River Level" as 0.05 or the root height
+			var height_diff = height - 0.05 
+			if height_diff > 0:
+				cost += height_diff * climb_cost
+			
+			if cost < best_cost:
+				best_cost = cost
+				best_index = k
+		
+		# 2. COMMIT
+		if best_index != -1:
+			var target = candidates[best_index]
+			
+			if flow_budget >= best_cost:
+				flow_budget -= best_cost
+				
+				# Add to delta
+				delta_segment.append(target)
+				delta_set[target] = true
+				
+				# Remove from list
+				candidates.remove_at(best_index)
+				
+				# Add neighbors
+				for d in directions:
+					var n = target + d
+					if map_data.has(n) and not delta_set.has(n) and not candidate_set.has(n):
+						candidates.append(n)
+						candidate_set[n] = true
+			else:
+				# Too expensive for remaining budget, remove this candidate to save perf
+				candidates.remove_at(best_index)
 		else:
-			# If we can't afford the cheapest option, we are done with this segment
 			break
 
-## Helper: Calculates cost and adds valid neighbors to candidates
-static func _add_neighbors(
-	current_pos: Vector2, 
-	segment_center: Vector2, 
-	center_height: float,
-	candidates: Array, 
-	world_heights: Dictionary, 
-	global_visited: Dictionary
-) -> void:
-	
-	var directions = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
-	
-	for dir in directions:
-		var neighbor: Vector2 = current_pos + dir
-		
-		# validation: Check bounds (exists in world) and if already used
-		if not world_heights.has(neighbor): continue
-		if global_visited.has(neighbor): continue
-		
-		# Check if this neighbor is already in the candidates list to avoid duplicates
-		var already_queued = false
-		for c in candidates:
-			if c.pos == neighbor:
-				already_queued = true
-				break
-		if already_queued: continue
-
-		# --- COST CALCULATION ---
-		var neighbor_height: float = world_heights[neighbor]
-		var height_diff: float = neighbor_height - center_height
-		
-		# If neighbor is lower, height cost is 0. If higher, it's expensive.
-		var height_penalty: float = max(0.0, height_diff) * COST_HEIGHT_MULTIPLIER
-		
-		# Distance from the spine of the river
-		var dist: float = neighbor.distance_to(segment_center)
-		var dist_penalty: float = dist * COST_DISTANCE_MULTIPLIER
-		
-		var total_cost: float = COST_BASE + height_penalty + dist_penalty
-		
-		candidates.append({ "pos": neighbor, "cost": total_cost })
-#
-#
 ## Widens the river using a Wave approach with DISTANCE PENALTY.
 ## - flood_distance_cost: Extra cost per unit of distance from the central river path.
 #func widen_river_wave_based(
@@ -162,7 +268,7 @@ static func _add_neighbors(
 	#flow_increment: float, 
 	#flood_cost_base: float = 1.0, 
 	#flood_climb_cost: float = 5.0,
-	#flood_distance_cost: float = 0.1, # NEW: Penalty for distance
+	#flood_distance_cost: float = 0.05, # NEW: Penalty for distance
 	#climb_tolerance: float = 0.01
 #):
 	#
@@ -265,4 +371,4 @@ static func _add_neighbors(
 			#
 			#if current_budget <= 0 or flooded_count_this_wave == 0:
 				#break
-				#
+				
