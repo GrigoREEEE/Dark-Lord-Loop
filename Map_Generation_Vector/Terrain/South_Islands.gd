@@ -15,12 +15,12 @@ func apply_southern_islands(map_data: Dictionary, width: int, height: int, belt_
 	# 1. NOISE SETUP
 	var shape_noise = FastNoiseLite.new()
 	shape_noise.seed = noise_seed + 200
-	shape_noise.frequency = 0.02 / res_scale
+	shape_noise.frequency = 0.015 / res_scale
 	shape_noise.fractal_octaves = 3 
 
 	var terrain_noise = FastNoiseLite.new()
 	terrain_noise.seed = noise_seed
-	terrain_noise.frequency = 0.013 / res_scale
+	terrain_noise.frequency = 0.02 / res_scale
 	terrain_noise.fractal_octaves = 6
 	
 	var belt_end_y = height - bottom_padding

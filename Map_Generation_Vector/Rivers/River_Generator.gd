@@ -5,11 +5,6 @@ class_name River_Generator
 var _rng = RandomNumberGenerator.new()
 var _winding_noise = FastNoiseLite.new()
 
-func _init():
-	_rng.randomize()
-	_winding_noise.seed = _rng.randi()
-	_winding_noise.frequency = 0.05 # Lower = Long, lazy curves. Higher = Snakelike.
-	_winding_noise.fractal_octaves = 2
 
 func generate_natural_river(width: int, height: int, ocean_mask: Dictionary, res_scale: float = 1.0) -> River:
 	var river = River.new()
@@ -18,11 +13,11 @@ func generate_natural_river(width: int, height: int, ocean_mask: Dictionary, res
 
 	# --- 1. CONFIGURATION ---
 	# Lower frequency = wider, larger meanders
-	_winding_noise.frequency = 0.005 / res_scale 
+	_winding_noise.frequency = 0.01 / res_scale 
 	
 	# How strongly the river wants to go South (0.0 to 1.0)
 	# Low = Crazy winding loops. High = Straighter river.
-	var gravity_strength: float = 0.3
+	var gravity_strength: float = 0.35
 	
 	# How hard the noise pushes the river left/right
 	var steer_strength: float = 0.5 
@@ -138,72 +133,6 @@ func _orthagonalize_river_path(river: River) -> void:
 	# Apply the new smoothed path back to the river object
 	river.river_path = new_path
 
-## Generates a single river starting at Top-Center and winding South
-#func generate_central_river(width: int, height: int, ocean_mask: Dictionary, res_scale: float = 1.0) -> River:
-	#var river = River.new()
-	#river.id = "RI" + str(_rng.randi() % 9999).pad_zeros(4)
-	#river.river_type = "Central"
-	#
-	## --- 1. DETERMINE SOURCE ---
-	#river.source = Vector2(int(width / 2.0), 0)
-	#river.river_path.append(river.source)
-	#
-	## --- 2. WINDING CONFIGURATION ---
-	#_winding_noise.frequency = 0.03 / res_scale 
-	#
-	#var current_pos = river.source
-	#var step_count = 0
-	#var max_steps = height * 4 
-	#
-	## --- 3. FLOW LOOP ---
-	#while step_count < max_steps:
-		#step_count += 1
-		#
-		## A. DETERMINE STEERING
-		#var steer = _winding_noise.get_noise_1d(step_count * 5.0) 
-		#var move_dir = Vector2(0, 1) # Default: South
-		#
-		#if steer > 0.2: move_dir = Vector2(1, 0)  # East
-		#elif steer < -0.2: move_dir = Vector2(-1, 0) # West
-			#
-		## B. PREDICT TARGET
-		#var target_pos = current_pos + move_dir
-		#
-		## C. ANTI-LOOP SAFETY
-		## If we try to turn into our own path, force flow South immediately.
-		#if river.river_path.has(target_pos):
-			#target_pos = current_pos + Vector2(0, 1)
-			#
-		## D. BOUNDARY SAFETY
-		## If we hit the bottom of the map, stop.
-		#if target_pos.y >= height - 1:
-			#river.mouth = current_pos
-			#break
-			#
-		#target_pos.x = clamp(target_pos.x, 0, width - 1)
-		#
-		## E. CRITICAL OCEAN CHECK
-		## We check the mask for the TARGET position.
-		## usage of .get(pos, true) defaults to TRUE (Ocean) for safety if data is missing.
-		## If the mask has the key, it uses the bool value. If key is missing, we assume Ocean to stop infinite loops.
-		#var is_target_ocean = ocean_mask.get(target_pos, false)
-		#
-		#if is_target_ocean:
-			#print(target_pos)
-			#print(ocean_mask[target_pos])
-			## The target IS water. 
-			## 1. Move into the water cell (so it connects visually)
-			#river.river_path.append(target_pos)
-			#river.mouth = target_pos
-			## 2. TERMINATE IMMEDIATELY
-			#break
-		#
-		## F. COMMIT MOVE (If we are here, target is definitely Land)
-		#current_pos = target_pos
-		#river.river_path.append(current_pos)
-		#
-	#return river
-#
 # Trims the river path so it stops exactly where the NEW coastline begins.
 func clean_river_path(river: River, ocean_mask: Dictionary):
 	var new_path: Array[Vector2] = []
@@ -224,3 +153,28 @@ func clean_river_path(river: River, ocean_mask: Dictionary):
 	
 	# Update the river object with the trimmed path
 	river.river_path = new_path
+
+# Checks if any "non-mouth" segment has accidentally grown into the beach.
+# Returns TRUE if a breach is detected (bad state).
+# Returns FALSE if the river is contained correctly.
+func check_river_breach(river: River, beach_mask: Dictionary, mouth_segments_count: int) -> bool:
+	if river.segments.is_empty():
+		return false
+		
+	# Determine the boundary.
+	# Any segment with an index LESS than this is considered "Inland" and must not touch the beach.
+	var start_of_mouth_index = max(0, river.segments.size() - mouth_segments_count)
+	
+	# Iterate only through the inland segments
+	for i in range(start_of_mouth_index):
+		var segment = river.segments[i]
+		
+		for cell in segment:
+			# If this cell is marked as beach in the mask
+			if beach_mask.get(cell, false) == true:
+				# We found a breach!
+				# Optional: Print debug info to know where it happened
+				# print("River Breach detected at segment ", i, " position ", cell)
+				return true
+				
+	return false
