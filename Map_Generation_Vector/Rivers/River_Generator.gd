@@ -5,11 +5,6 @@ class_name River_Generator
 var _rng = RandomNumberGenerator.new()
 var _winding_noise = FastNoiseLite.new()
 
-#func _init():
-	#_rng.randomize()
-	#_winding_noise.seed = _rng.randi()
-	#_winding_noise.frequency = 0.05 # Lower = Long, lazy curves. Higher = Snakelike.
-	#_winding_noise.fractal_octaves = 2
 
 func generate_natural_river(width: int, height: int, ocean_mask: Dictionary, res_scale: float = 1.0) -> River:
 	var river = River.new()
@@ -158,3 +153,28 @@ func clean_river_path(river: River, ocean_mask: Dictionary):
 	
 	# Update the river object with the trimmed path
 	river.river_path = new_path
+
+# Checks if any "non-mouth" segment has accidentally grown into the beach.
+# Returns TRUE if a breach is detected (bad state).
+# Returns FALSE if the river is contained correctly.
+func check_river_breach(river: River, beach_mask: Dictionary, mouth_segments_count: int) -> bool:
+	if river.segments.is_empty():
+		return false
+		
+	# Determine the boundary.
+	# Any segment with an index LESS than this is considered "Inland" and must not touch the beach.
+	var start_of_mouth_index = max(0, river.segments.size() - mouth_segments_count)
+	
+	# Iterate only through the inland segments
+	for i in range(start_of_mouth_index):
+		var segment = river.segments[i]
+		
+		for cell in segment:
+			# If this cell is marked as beach in the mask
+			if beach_mask.get(cell, false) == true:
+				# We found a breach!
+				# Optional: Print debug info to know where it happened
+				# print("River Breach detected at segment ", i, " position ", cell)
+				return true
+				
+	return false

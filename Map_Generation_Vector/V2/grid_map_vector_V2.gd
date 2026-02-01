@@ -66,23 +66,50 @@ func handle_rivers(res_scale):
 		
 	## Generate the River
 	my_river = river_gen.generate_natural_river(grid_width, grid_height, _ocean_mask, res_scale)
-	## Apply Erosion
-	erosion.apply_river_erosion(terrain_data, my_river, 29.0, 30.0, 0.85, 0.2, res_scale) #5, 30, 0.9, 0.1)
-	## Check where the ocean is again (due to erosion)
-	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
-	## Remove the river from the ocean
-	river_gen.clean_river_path(my_river, _ocean_mask)
-	## Break the river into segments
-	my_river.create_segments(20)
-	## Expand the river
-	river_expander.widen_river_wave_based(terrain_data, my_river, _ocean_mask, _beach_mask, mouth_segments, 1.5 * res_scale, 2.5 * res_scale)
-	river_expander.merge_mouth_segments(my_river, mouth_segments)
-	river_expander.expand_delta(terrain_data, my_river, _ocean_mask)
-	_rivers = []
-	_rivers.append(my_river)
+	if check_river_breach(my_river, _beach_mask, mouth_segments):
+		handle_rivers(res_scale)
+	else:
+		## Apply Erosion
+		erosion.apply_river_erosion(terrain_data, my_river, 29.0, 30.0, 0.85, 0.2, res_scale) #5, 30, 0.9, 0.1)
+		## Check where the ocean is again (due to erosion)
+		_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
+		## Remove the river from the ocean
+		river_gen.clean_river_path(my_river, _ocean_mask)
+		## Break the river into segments
+		my_river.create_segments(20)
+		## Expand the river
+		river_expander.widen_river_iterative(terrain_data, my_river, _ocean_mask, _beach_mask, mouth_segments, 1.5 * res_scale, 2.5 * res_scale)
+
+		_rivers = []
+		_rivers.append(my_river)
 
 # Configurable settings for visualization
 @export var water_level: float = 0.15 # Elevations below this are drawn as water
+
+# Checks if any "non-mouth" segment has accidentally grown into the beach.
+# Returns TRUE if a breach is detected (bad state).
+# Returns FALSE if the river is contained correctly.
+func check_river_breach(river: River, beach_mask: Dictionary, mouth_segments_count: int) -> bool:
+	if river.segments.is_empty():
+		return false
+		
+	# Determine the boundary.
+	# Any segment with an index LESS than this is considered "Inland" and must not touch the beach.
+	var start_of_mouth_index = max(0, river.segments.size() - mouth_segments_count)
+	
+	# Iterate only through the inland segments
+	for i in range(start_of_mouth_index):
+		var segment = river.segments[i]
+		
+		for cell in segment:
+			# If this cell is marked as beach in the mask
+			if beach_mask.get(cell, false) == true:
+				# We found a breach!
+				# Optional: Print debug info to know where it happened
+				# print("River Breach detected at segment ", i, " position ", cell)
+				return true
+				
+	return false
 
 # Cache the texture so we don't regenerate it every frame
 var _map_texture: ImageTexture
