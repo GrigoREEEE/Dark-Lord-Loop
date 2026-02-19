@@ -38,7 +38,46 @@ func create_segments(chunk_size: int) -> void:
 	if current_segment.size() > 0:
 		segments.append(current_segment)
 
+# Merges the last 'n' segments and then chops them into smaller chunks.
+# Returns the number of NEW segments created (useful for updating 'mouth_segments' counts).
+func resegment_delta(n_segments_from_end: int, target_chunk_size: int) -> int:
+	if segments.size() < n_segments_from_end:
+		return 0 # Not enough segments to process
 
+	# 1. IDENTIFY & MERGE
+	var start_index = segments.size() - n_segments_from_end
+	var combined_cells: Array[Vector2] = []
+	
+	# Collect all cells from the target segments in order (Upstream -> Downstream)
+	for i in range(start_index, segments.size()):
+		combined_cells.append_array(segments[i])
+	
+	# 2. REMOVE OLD SEGMENTS
+	# We pop from back 'n' times
+	for k in range(n_segments_from_end):
+		segments.pop_back()
+		
+	# 3. CHOP INTO NEW CHUNKS
+	var current_idx = 0
+	var total_cells = combined_cells.size()
+	var new_segments_count = 0
+	
+	while current_idx < total_cells:
+		# Determine the slice end
+		var end_idx = min(current_idx + target_chunk_size, total_cells)
+		
+		# Extract the slice
+		var new_chunk: Array[Vector2] = combined_cells.slice(current_idx, end_idx)
+		
+		# Add back to the main segments list
+		segments.append(new_chunk)
+		new_segments_count += 1
+		
+		current_idx += target_chunk_size
+		
+	return new_segments_count
+		
+	# print("Resegmented Delta: Merged ", n_segments_from_end, " into ", ceil(float(total_cells)/target_chunk_size), " chunks.")
 
 # Removes river cells from the last segment if they overlap with the ocean mask.
 # This fixes "spilling" where the river widening algorithm floods the ocean itself.
@@ -63,3 +102,22 @@ func clean_river_mouth(river: River, ocean_mask: Dictionary):
 			
 	# Update the segment with only the valid land cells
 	river.segments[last_segment_index] = cleaned_segment
+	
+# Combines the last 'n' segments of the river into a single "Delta Segment".
+func merge_segments(n_segments_to_merge: int):
+	if self.segments.size() < n_segments_to_merge + 1:
+		return # River too short to make a delta
+		
+	var delta_cells: Array[Vector2] = []
+	
+	# 1. Collect all cells from the last N segments
+	# We iterate backwards to pop them off easily
+	for k in range(n_segments_to_merge):
+		var segment = self.segments.pop_back()
+		delta_cells.append_array(segment)
+		
+	# 2. Add the combined cluster back as a single segment
+	# (We reverse the collection order if strictly needed, but for a set of cells it implies no order)
+	self.segments.append(delta_cells)
+	
+	print("Delta created. River now has ", self.segments.size(), " segments.")

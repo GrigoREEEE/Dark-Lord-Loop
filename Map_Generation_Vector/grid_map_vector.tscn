@@ -3,13 +3,36 @@
 [ext_resource type="Script" uid="uid://cl06ehjh28r3y" path="res://Map_Generation_Vector/V2/grid_map_vector_V2.gd" id="1_1e54l"]
 [ext_resource type="Script" uid="uid://d0k8vxsbn2mye" path="res://Map_Generation_Vector/camera_2d.gd" id="2_ygiie"]
 
-[node name="Grid_Map_Vector" type="Node2D" unique_id=1883286590]
+[node name="Grid_Map_Vector" type="Node2D" unique_id=1883286590 node_paths=PackedStringArray("river_mode_selector", "save_button", "lake_debug_button")]
 script = ExtResource("1_1e54l")
+river_mode_selector = NodePath("CanvasLayer/RiverModeSelector")
+save_button = NodePath("CanvasLayer/SaveButton")
+lake_debug_button = NodePath("")
 noise_seed = 100
-debug_river_segments = true
-cell_size = 1
+reference_width = null
+cell_size = null
 grid_width = 800
 grid_height = 1200
+mouth_segments = null
+water_level = null
+delta_streams = null
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=719009694]
+position = Vector2(576, 324)
 script = ExtResource("2_ygiie")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=803462055]
+
+[node name="RiverModeSelector" type="OptionButton" parent="CanvasLayer" unique_id=1384297460]
+offset_left = 973.0
+offset_top = 1.0
+offset_right = 1005.0
+offset_bottom = 21.0
+metadata/_edit_use_anchors_ = true
+
+[node name="SaveButton" type="Button" parent="CanvasLayer" unique_id=1638235133]
+offset_left = 618.0
+offset_top = 7.0
+offset_right = 626.0
+offset_bottom = 15.0
+text = "Save Map Picture"

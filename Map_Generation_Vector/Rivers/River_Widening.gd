@@ -3,20 +3,18 @@ extends Node
 class_name River_Widener
 
 # Widens the river using an "Iterative Round-Robin" approach.
-# 1. Calculates budgets upfront.
-# 2. Cycles through segments (1 -> N -> 1 -> N) performing small widening steps.
-# 3. Stops when no segment can afford to widen further.
+# - Mouth segments gain EXPONENTIAL flow towards the ocean.
+# - Cells <= 0.07 height are flooded for FREE (0 cost).
 func widen_river_iterative(
 	map_data: Dictionary, 
 	river: River, 
-	ocean_mask: Dictionary, 
-	beach_mask: Dictionary,
+	ocean_mask: Dictionary,
 	mouth_segments : int,
 	base_flow_gain: float, 
 	flow_increment: float, 
 	flood_cost_base: float = 1.0, 
 	flood_climb_cost: float = 5.0,
-	flood_distance_cost: float = 0.1,
+	flood_distance_cost: float = 0.3,
 	climb_tolerance: float = 0.01
 ):
 	
@@ -24,19 +22,14 @@ func widen_river_iterative(
 	
 	# --- 1. PRE-CALCULATE BUDGETS ---
 	var segment_budgets: Array[float] = []
-	var start_of_mouth = max(0, river.segments.size() - mouth_segments)
+	var total_segments = river.segments.size()
+	var start_of_mouth = max(0, total_segments - mouth_segments)
 	
-	for i in range(river.segments.size()):
+	for i in range(total_segments):
 		var is_mouth = i >= start_of_mouth
 		var budget = base_flow_gain + (float(i) * flow_increment)
 		
-		# Mouth Boost
-		if is_mouth:
-			budget *= 1.5 
-			budget += 10.0 
-			
 		segment_budgets.append(budget)
-		# Update the class property for debug/display usage
 		river.segment_flow.append(budget)
 
 	# --- 2. SETUP OPTIMIZATION STRUCTURES ---
@@ -50,7 +43,6 @@ func widen_river_iterative(
 	
 	var directions = [Vector2(0, 1), Vector2(0, -1), Vector2(1, 0), Vector2(-1, 0)]
 	
-	# Pre-cache core cells and bed height to save performance inside the big loop
 	var segment_data_cache = []
 	for i in range(river.segments.size()):
 		var segment = river.segments[i]
@@ -73,15 +65,13 @@ func widen_river_iterative(
 	# --- 3. THE ROUND-ROBIN LOOP ---
 	var segments_active = true
 	var loop_count = 0
-	var max_loops = 100 # Safety break to prevent infinite loops
+	var max_loops = 500 
 	
 	while segments_active and loop_count < max_loops:
-		segments_active = false # Assume we are done unless someone widens
+		segments_active = false 
 		loop_count += 1
 		
-		# Cycle through every segment once per loop
 		for i in range(river.segments.size()):
-			# Skip if this segment is out of money
 			if segment_budgets[i] <= 0:
 				continue
 				
@@ -89,72 +79,58 @@ func widen_river_iterative(
 			var seg_data = segment_data_cache[i]
 			var is_mouth = i >= start_of_mouth
 			
-			# A. FIND CANDIDATES (Re-scan frontier)
 			var candidates = []
 			var candidate_set = {}
 			
-			# Optimization: Instead of scanning the WHOLE segment every time, 
-			# we could track a "frontier", but for simplicity/robustness we scan neighbors.
 			for cell in segment:
 				for d in directions:
 					var neighbor = cell + d
 					
-					# Validity Checks
 					if not map_data.has(neighbor): continue
 					if river_cells_set.has(neighbor): continue
-					if candidate_set.has(neighbor): continue # Don't double add
+					if candidate_set.has(neighbor): continue
 					if ocean_mask.get(neighbor, false) == true: continue
 					
-					# Beach Check
-					if beach_mask.get(neighbor, false) == true and not is_mouth:
-						continue
-
 					# B. CALCULATE COST
 					var target_height = map_data[neighbor]
+					var cost = 0.0
+					
 					var effective_base = flood_cost_base
 					var effective_dist = flood_distance_cost
 					
-					# Lowland Discount
-					if (target_height >= 0.07) and (target_height < 0.12):
+					# Lowland Discount (0.07 < h <= 0.12)
+					if target_height <= 0.12:
 						effective_base *= 0.8 
 						effective_dist *= 0.8
-					if (target_height < 0.07):
-						effective_base = 0
-						effective_dist = 0
-						
-					# Mouth Discount
+					
+					# Mouth Distance Discount
 					if is_mouth:
 						effective_dist *= 0.3
-						
-					var cost = effective_base
 					
-					# Climb Cost
+					cost = effective_base
+					
+					# Climb Cost (Only calculated if not free)
 					var height_diff = target_height - seg_data.bed_height
 					if height_diff > climb_tolerance:
 						cost += (height_diff - climb_tolerance) * flood_climb_cost
-						
+					
 					# Distance Cost
 					var min_dist = 999.0
 					for core in seg_data.core_cells:
 						var d_val = core.distance_to(neighbor)
 						if d_val < min_dist: min_dist = d_val
 					cost += min_dist * effective_dist
-					
 					candidates.append({ "pos": neighbor, "cost": cost })
 					candidate_set[neighbor] = true
 			
-			# C. ATTEMPT TO WIDEN (Small Batch)
+			# C. ATTEMPT TO WIDEN
 			if candidates.is_empty():
-				# No valid neighbors left to flood, effectively bankrupt this segment to stop checking it
 				segment_budgets[i] = -1.0
 				continue
 				
 			candidates.sort_custom(func(a, b): return a.cost < b.cost)
 			
-			# "Widen the segment a single time" (or small batch of 1-3 cells)
-			# Using a batch of 1 is purely iterative, 3 is slightly faster
 			var batch_size = 3 
-			var flooded_this_turn = 0
 			
 			for k in range(min(candidates.size(), batch_size)):
 				var best = candidates[k]
@@ -163,16 +139,14 @@ func widen_river_iterative(
 					segment_budgets[i] -= best.cost
 					segment.append(best.pos)
 					river_cells_set[best.pos] = true
-					flooded_this_turn += 1
-					segments_active = true # Keep the outer loop alive!
+					segments_active = true 
 				else:
-					# Can't afford the cheapest option
 					segment_budgets[i] = -1.0
 					break
 
 
 # Combines the last 'n' segments of the river into a single "Delta Segment".
-func merge_mouth_segments(river: River, n_segments_to_merge: int):
+func merge_segments(river: River, n_segments_to_merge: int):
 	if river.segments.size() < n_segments_to_merge + 1:
 		return # River too short to make a delta
 		
