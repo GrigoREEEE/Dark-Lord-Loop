@@ -2,100 +2,81 @@ extends Node
 
 class_name River_Generator
 
-var _rng = RandomNumberGenerator.new()
-var _winding_noise = FastNoiseLite.new()
 
 
-func generate_natural_river(width: int, height: int, ocean_mask: Dictionary, res_scale: float = 1.0) -> River:
+func generate_natural_river(width: int, height: int, ocean_mask: Dictionary, noise_seed : int, res_scale: float = 1.0) -> River:
+	
 	var river = River.new()
-	river.id = "RI" + str(_rng.randi() % 9999).pad_zeros(4)
+	river.id = "RI" + str(randi() % 9999).pad_zeros(4)
 	river.river_type = "Natural"
-
+	
 	# --- 1. CONFIGURATION ---
-	# Lower frequency = wider, larger meanders
-	_winding_noise.frequency = 0.01 / res_scale 
+	var noise = FastNoiseLite.new()
+	noise.seed = noise_seed
+	noise.frequency = 0.01 / res_scale 
 	
-	# How strongly the river wants to go South (0.0 to 1.0)
-	# Low = Crazy winding loops. High = Straighter river.
 	var gravity_strength: float = 0.35
-	
-	# How hard the noise pushes the river left/right
 	var steer_strength: float = 0.5 
 
+
 	# --- 2. INITIALIZATION ---
-	# Note: Based on your previous code, I assume (width/2, 0) is North (Source)
-	# and (height) is South (Ocean). 
 	var start_x = width / 2.0
 	river.source = Vector2(start_x, 0)
 	
-	# We use a float vector for smooth movement, but store ints in the path
 	var current_pos_float: Vector2 = Vector2(start_x, 0)
-	var current_dir: Vector2 = Vector2.DOWN # Initial momentum
+	var current_dir: Vector2 = Vector2.DOWN 
 	
 	river.river_path.append(river.source)
 	
 	var step_count: int = 0
-	var max_steps: int = height * 10 # Allow plenty of steps for winding
+	var max_steps: int = height * 10 
 	
 	# --- 3. FLOW LOOP ---
 	while step_count < max_steps:
 		step_count += 1
 		
-		# A. CALCULATE STEERING FORCES
-		# Get noise value between -1 and 1
-		var noise_val = _winding_noise.get_noise_2d(step_count * 0.5, 0.0)
-		
-		# Create a steering force based on noise (perpendicular to flow is best, 
-		# but simple rotation works for top-down rivers)
-		var desired_angle = noise_val * PI # Steer anywhere from -180 to 180 degrees potentially
+		# --- A. BASE MOVEMENT (Noise + Gravity) ---
+		var noise_val = noise.get_noise_2d(step_count * 0.5, 0.0)
+		var desired_angle = noise_val * PI 
 		var steer_vector = Vector2.DOWN.rotated(desired_angle)
 		
-		# B. APPLY FORCES TO DIRECTION
-		# 1. Add noise steering
+		# Apply natural forces
 		current_dir = current_dir.lerp(steer_vector, steer_strength)
-		# 2. Add "Gravity" (pull towards Ocean/South) so it doesn't loop forever
 		current_dir = current_dir.lerp(Vector2.DOWN, gravity_strength)
 		
-		# Normalize to ensure consistent speed
-		current_dir = current_dir.normalized()
 		
-		# C. MOVE CURSOR
-		# We move by < 1.0 to ensure we don't skip over grid cells (diagonal gaps)
+		# --- C. MOVE ---
 		current_pos_float += current_dir * 0.6 
 		
-		# D. CONVERT TO GRID
-		var current_grid_pos = Vector2(round(current_pos_float.x), round(current_pos_float.y))
-		
-		# E. SAFETY BOUNDS (Clamp X, Check Y)
+		# --- D. BOUNDS & RECORD ---
+		var current_grid_pos = current_pos_float.round()
 		current_grid_pos.x = clamp(current_grid_pos.x, 0, width - 1)
 		
-		# Check if we hit the bottom of the map
 		if current_grid_pos.y >= height - 1:
 			river.mouth = current_grid_pos
 			_add_unique_point(river.river_path, current_grid_pos)
 			break
 
-		# F. OCEAN CHECK
-		var is_ocean = ocean_mask.get(current_grid_pos, false)
-		
-		if is_ocean:
+		if ocean_mask.get(current_grid_pos, false):
 			river.mouth = current_grid_pos
 			_add_unique_point(river.river_path, current_grid_pos)
 			break
 			
-		# G. RECORD PATH
-		# Only add if it's a new tile (since we move in sub-pixel steps)
 		_add_unique_point(river.river_path, current_grid_pos)
-		_orthagonalize_river_path(river)
+		
+	_orthagonalize_river_path(river, noise_seed)
 	return river
 
-# Helper to prevent duplicate consecutive points in the array
-func _add_unique_point(arr: Array[Vector2], point: Vector2) -> void:
-	if arr.is_empty() or arr.back() != point:
-		arr.append(point)
+func _add_unique_point(path: Array[Vector2], point: Vector2):
+	if path.is_empty() or path.back() != point:
+		path.append(point)
+
 
 ## Post-processing helper: Removes diagonal connections by inserting bridge cells
-func _orthagonalize_river_path(river: River) -> void:
+func _orthagonalize_river_path(river: River, noise_seed : int) -> void:
+	var _rng = RandomNumberGenerator.new()
+	_rng.seed = noise_seed
+	
 	var old_path: Array[Vector2] = river.river_path
 	if old_path.is_empty():
 		return
@@ -136,7 +117,6 @@ func _orthagonalize_river_path(river: River) -> void:
 # Trims the river path so it stops exactly where the NEW coastline begins.
 func clean_river_path(river: River, ocean_mask: Dictionary):
 	var new_path: Array[Vector2] = []
-	var found_ocean = false
 	
 	for i in range(river.river_path.size()):
 		var pos = river.river_path[i]
@@ -148,7 +128,6 @@ func clean_river_path(river: River, ocean_mask: Dictionary):
 		if ocean_mask.get(pos, false) == true:
 			# We hit the new water line!
 			river.mouth = pos
-			found_ocean = true
 			break # Stop adding points, discard the rest of the old path
 	
 	# Update the river object with the trimmed path
