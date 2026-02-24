@@ -5,8 +5,8 @@ class_name Ocean_Identification
 ########################################
 
 # Returns a Dictionary where Key = Vector2(x,y) and Value = bool (True if Ocean, False if Land/Inland)
-func ocean_vs_land(map_data: Dictionary, width: int, height: int, water_level: float = 0.15) -> Dictionary:
-	var is_ocean_map = {}
+func ocean_vs_land(map_data: Dictionary, width: int, height: int, water_level: float = 0.15) -> Dictionary[Vector2, bool]:
+	var is_ocean_map: Dictionary[Vector2, bool] = {}
 	var open_set = [] # Queue for Flood Fill
 	
 	# --- STEP 1: INITIALIZE DICTIONARY ---

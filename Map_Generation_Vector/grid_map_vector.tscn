@@ -8,13 +8,8 @@ script = ExtResource("1_1e54l")
 river_mode_selector = NodePath("CanvasLayer/RiverModeSelector")
 save_button = NodePath("CanvasLayer/SaveButton")
 noise_seed = 100
-reference_width = null
-cell_size = null
 grid_width = 800
 grid_height = 1200
-mouth_segments = null
-water_level = null
-delta_streams = null
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=719009694]
 position = Vector2(576, 324)

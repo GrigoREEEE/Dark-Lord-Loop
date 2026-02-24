@@ -1,7 +1,6 @@
 class_name Profiler
 
 static var _timers = {}
-static var _accumulators = {}
 
 # Call this at the START of the function you want to measure
 static func start(tag: String):

@@ -262,8 +262,8 @@ func create_delta_mask(river: River, width: int, height: int) -> Dictionary:
 	
 # Creates a boolean mask (Dictionary) where every cell in the delta is TRUE.
 # Returns empty dictionary if river has no segments.
-func create_delta_mask2(river: River) -> Dictionary:
-	var mask = {}
+func create_delta_mask2(river: River) -> Dictionary[Vector2, bool]:
+	var mask : Dictionary[Vector2, bool] = {}
 	
 	if river.segments.is_empty():
 		return mask

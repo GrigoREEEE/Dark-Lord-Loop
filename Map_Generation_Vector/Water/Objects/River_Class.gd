@@ -11,6 +11,8 @@ var segment_flow: Array[float] = []
 var river_mass: Array[Vector2] = []
 var is_proper : bool = true
 
+var enters_into
+
 # New function to partition the river
 func create_segments(chunk_size: int) -> void:
 	# Clear any existing segments to prevent duplication

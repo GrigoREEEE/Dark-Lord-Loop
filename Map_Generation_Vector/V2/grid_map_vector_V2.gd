@@ -24,20 +24,16 @@ var current_river_mode: RiverDisplayMode = RiverDisplayMode.NORMAL
 @export var grid_width: int = 400
 @export var grid_height: int = 600
 
-# Main River Generation
-@export var mouth_segments: int = 3
-var to_merge: int = 0
+# Water_Display
 @export var water_level: float = 0.15 # Elevations below this are drawn as water
-@export var delta_streams: Dictionary[int, int] = {3:1,2:1,1:1}
+
 
 
 # --- Data Holders ---
-var inverse_land_map: Dictionary = {} # Dictionary[int, Array[Vector2]]
-var current_land_map: Dictionary = {} # Dictionary[Vector2,int]
-var terrain_data: Dictionary = {} # Dictionary[Vector2, float]
-var _ocean_mask: Dictionary = {} # Dictionary[Vector2, bool]
-var _beach_mask: Dictionary = {} # Dictionary[Vector2, bool]
-var _delta_mask: Dictionary = {} # Dictionary[Vector2, bool]
+var terrain_data: Dictionary[Vector2, float] = {} # Dictionary[Vector2, float]
+var _ocean_mask: Dictionary[Vector2, bool] = {} # Dictionary[Vector2, bool]
+var _beach_mask: Dictionary[Vector2, bool] = {} # Dictionary[Vector2, bool]
+var _delta_mask: Dictionary[Vector2, bool] = {} # Dictionary[Vector2, bool]
 var _rivers: Array[River] = []
 
 func _ready():
@@ -52,83 +48,31 @@ func _ready():
 	
 	var res_scale = int(grid_width/reference_width)
 	Profiler.start("total terrain generation")
+	
 	var world_gen: Terrain_Generator = Terrain_Generator.new()
 	var south_islands: South_Islands = South_Islands.new()
 	var ice_wall: Ice_Wall = Ice_Wall.new()
+	var ocean_id: Ocean_Identification = Ocean_Identification.new()
+	var beach_id: Beach_Identification = Beach_Identification.new()
+	var river_handler : River_Handler = River_Handler.new()
 
 	
 	terrain_data = world_gen.generate_height_map(grid_width, grid_height, noise_seed, res_scale)
 	terrain_data = south_islands.apply_southern_islands(terrain_data, grid_width, grid_height, 150, 15, 60, noise_seed, res_scale)
 	terrain_data = ice_wall.apply_ice_wall(terrain_data, grid_width, noise_seed, res_scale)
 	Profiler.end("total terrain generation")
-	handle_rivers(res_scale)
-
-	update_map_visuals()
-	#save_map_to_png("res://image.png")
-
-func handle_rivers(res_scale):
-	Profiler.start("total river generation")
-	var river_gen: River_Generator = River_Generator.new()
-	var erosion: River_Erosion = River_Erosion.new()
-	var ocean_id: Ocean_Identification = Ocean_Identification.new()
-	var beach_id: Beach_Identification = Beach_Identification.new()
-	var river_expander: River_Widener = River_Widener.new()
-	var delta_maker: Delta = Delta.new()
-	var my_river: River
 	
 	## Check where the ocean abd the beach are
 	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
 	_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 5, res_scale)
+	
+	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, terrain_data, _ocean_mask, _beach_mask, _delta_mask, {}, noise_seed, res_scale)
+	_rivers.append(main_river)
+	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, terrain_data, _ocean_mask, _beach_mask, _delta_mask, noise_seed, res_scale)
+	_rivers.append_array(minor_rivers)
+	update_map_visuals()
+	#save_map_to_png("res://image.png")
 
-
-		
-	## Generate the River
-	my_river = river_gen.generate_natural_river(grid_width, grid_height, _ocean_mask, noise_seed, res_scale)
-	if check_river_breach(my_river, _beach_mask, mouth_segments):
-		print("River touches beach!")
-		noise_seed = randi()
-		print("New noise seed is: %s" % noise_seed)
-		my_river = null
-		handle_rivers(res_scale)
-	else:
-		## Apply Erosion
-		erosion.apply_river_erosion(terrain_data, my_river, 29.0, 30.0, 0.85, 0.2, res_scale) #5, 30, 0.9, 0.1)
-		## Check where the ocean is again (due to erosion)
-		_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
-		## Remove the river from the ocean
-		river_gen.clean_river_path(my_river, _ocean_mask)
-		## Break the river into segments
-		my_river.create_segments(10 * res_scale)
-		to_merge = my_river.resegment_delta(mouth_segments, 1 * res_scale) + 1
-		
-		## Expand the river
-		river_expander.widen_river_iterative(terrain_data, my_river, _ocean_mask, mouth_segments, 20.0 * res_scale, 1.0 * res_scale)
-		river_expander.merge_segments(my_river, to_merge)
-		#_delta_mask = delta_maker.create_delta_mask(my_river, grid_width, grid_height)
-		_delta_mask = delta_maker.create_delta_mask2(my_river)
-		## Make the delta
-		delta_maker.generate_delta(my_river, _ocean_mask, delta_streams, noise_seed)
-		delta_maker.naturalize_delta_islands(terrain_data, my_river, _delta_mask)
-		delta_maker.erode_delta_edges(terrain_data, _delta_mask)
-		
-		_rivers = []
-		_rivers.append(my_river)
-		Profiler.end("total river generation")
-
-
-# Checks if any "non-mouth" segment has accidentally grown into the beach.
-# Returns TRUE if a breach is detected (bad state).
-# Returns FALSE if the river is contained correctly.
-func check_river_breach(river: River, beach_mask: Dictionary, mouth_segments_count: int) -> bool:
-	if river.segments.is_empty():
-		return false
-	var start_of_mouth_index = max(0, river.segments.size() - mouth_segments_count)
-	for i in range(start_of_mouth_index):
-		var segment = river.segments[i]
-		for cell in segment:
-			if beach_mask.get(cell, false) == true:
-				return true
-	return false
 
 # Cache the texture so we don't regenerate it every frame
 var _map_texture: ImageTexture
@@ -298,3 +242,28 @@ func save_map_to_disk():
 
 func _on_save_button_pressed():
 	save_map_to_disk()
+
+func _unhandled_input(event: InputEvent):
+	# Check if the event is a mouse button click
+	if event is InputEventMouseButton and event.pressed:
+		# Check if it is the Right Mouse Button
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			
+			# Get the mouse position relative to this node
+			var local_mouse_pos = get_local_mouse_position()
+			
+			# Convert screen pixels to map grid coordinates
+			var grid_x = int(local_mouse_pos.x / cell_size)
+			var grid_y = int(local_mouse_pos.y / cell_size)
+			var grid_pos = Vector2(grid_x, grid_y)
+			
+			# Ensure we clicked INSIDE the map boundaries
+			if grid_x >= 0 and grid_x < grid_width and grid_y >= 0 and grid_y < grid_height:
+				
+				# Fetch elevation for extra debugging info
+				var elevation = "N/A"
+				if not terrain_data.is_empty() and terrain_data.has(grid_pos):
+					elevation = str(snapped(terrain_data[grid_pos], 0.001))
+				
+				# Print to the Output console
+				print("📍 Map Clicked - Grid Pos: ", grid_pos, " | Elevation: ", elevation)

@@ -9,9 +9,9 @@ class_name Beach_Identification
 # Returns a Dictionary[Vector2, bool]
 # True = Within 'max_dist' of the ocean (Real Beach)
 # False = Too far from ocean (Inland Lowland)
-func generate_beach_mask(ocean_mask: Dictionary, distance: int, res_scale : float = 1.0) -> Dictionary:
+func generate_beach_mask(ocean_mask: Dictionary, distance: int, res_scale : float = 1.0) -> Dictionary[Vector2, bool]:
 	distance = int(distance * res_scale)
-	var beach_mask = {}
+	var beach_mask: Dictionary[Vector2, bool] = {}
 	var visited = {} # To keep track of cells we've already processed
 	var queue = []   # BFS Queue
 

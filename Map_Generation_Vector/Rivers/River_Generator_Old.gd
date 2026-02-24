@@ -1,21 +1,10 @@
 extends Node
 
-class_name River_Generator
+class_name River_Generator_old
 
+# 02.21.2026
 
-
-# Generates a natural river flowing in ANY specified direction.
-# - start_pos: Pixel coordinate where the river begins.
-# - target_dir: The general "Gravity" direction (e.g., Vector2.RIGHT for West->East).
-func generate_natural_river(
-	width: int, 
-	height: int, 
-	ocean_mask: Dictionary, 
-	noise_seed: int, 
-	start_pos: Vector2,
-	target_dir: Vector2,
-	res_scale: float = 1.0
-) -> River:
+func generate_natural_river(width: int, height: int, ocean_mask: Dictionary, noise_seed : int, res_scale: float = 1.0) -> River:
 	
 	var river = River.new()
 	river.id = "RI" + str(randi() % 9999).pad_zeros(4)
@@ -28,74 +17,43 @@ func generate_natural_river(
 	
 	var gravity_strength: float = 0.35
 	var steer_strength: float = 0.5 
-	
-	# Sensor Config
-	var sensor_reach: float = 15.0 
-	var repulsion_strength: float = 0.8 
+
 
 	# --- 2. INITIALIZATION ---
-	river.source = start_pos
+	var start_x = width / 2.0
+	river.source = Vector2(start_x, 0)
 	
-	var current_pos_float: Vector2 = start_pos
-	# Initialize movement in the desired direction
-	var current_dir: Vector2 = target_dir.normalized()
+	var current_pos_float: Vector2 = Vector2(start_x, 0)
+	var current_dir: Vector2 = Vector2.DOWN 
 	
 	river.river_path.append(river.source)
 	
 	var step_count: int = 0
-	# Allow more steps for diagonal paths
-	var max_steps: int = max(width, height) * 10 
+	var max_steps: int = height * 10 
 	
 	# --- 3. FLOW LOOP ---
 	while step_count < max_steps:
 		step_count += 1
 		
 		# --- A. BASE MOVEMENT (Noise + Gravity) ---
-		# Get noise value (-1.0 to 1.0)
 		var noise_val = noise.get_noise_2d(step_count * 0.5, 0.0)
+		var desired_angle = noise_val * PI 
+		var steer_vector = Vector2.DOWN.rotated(desired_angle)
 		
-		# Calculate the noise steering vector relative to our target direction
-		var desired_angle = noise_val * PI # -180 to 180 degrees
-		var steer_vector = target_dir.rotated(desired_angle)
-		
-		# Apply forces
+		# Apply natural forces
 		current_dir = current_dir.lerp(steer_vector, steer_strength)
-		current_dir = current_dir.lerp(target_dir, gravity_strength)
+		current_dir = current_dir.lerp(Vector2.DOWN, gravity_strength)
 		
-		## --- B. SIDE SENSOR LOGIC (Direction Agnostic) ---
-		## Calculate Left/Right relative to current flow
-		#var left_vec = current_dir.rotated(deg_to_rad(-90)).normalized()
-		#var right_vec = current_dir.rotated(deg_to_rad(90)).normalized()
-		#
-		#var push_force = Vector2.ZERO
-		#
-		## Check LEFT Sensor
-		#var left_sensor_pos = (current_pos_float + (left_vec * sensor_reach)).round()
-		#if ocean_mask.get(left_sensor_pos, false) == true:
-			#push_force += right_vec * repulsion_strength
-			#
-		## Check RIGHT Sensor
-		#var right_sensor_pos = (current_pos_float + (right_vec * sensor_reach)).round()
-		#if ocean_mask.get(right_sensor_pos, false) == true:
-			#push_force -= right_vec * repulsion_strength 
-			#
-		#current_dir += push_force
-		#current_dir = current_dir.normalized()
 		
 		# --- C. MOVE ---
 		current_pos_float += current_dir * 0.6 
 		
 		# --- D. BOUNDS & RECORD ---
 		var current_grid_pos = current_pos_float.round()
+		current_grid_pos.x = clamp(current_grid_pos.x, 0, width - 1)
 		
-		# Universal Out-of-Bounds Check
-		if (current_grid_pos.x < 0 or current_grid_pos.x >= width or 
-			current_grid_pos.y < 0 or current_grid_pos.y >= height):
-			
+		if current_grid_pos.y >= height - 1:
 			river.mouth = current_grid_pos
-			# Clamp just for the final point so it doesn't crash map access
-			current_grid_pos.x = clamp(current_grid_pos.x, 0, width-1)
-			current_grid_pos.y = clamp(current_grid_pos.y, 0, height-1)
 			_add_unique_point(river.river_path, current_grid_pos)
 			break
 
@@ -106,7 +64,6 @@ func generate_natural_river(
 			
 		_add_unique_point(river.river_path, current_grid_pos)
 		
-	# Post-processing helper (assumed to exist)
 	_orthagonalize_river_path(river, noise_seed)
 	return river
 

@@ -9,8 +9,8 @@ class_name Terrain_Generator
 ########## World Generation ############
 ########################################
 
-func generate_height_map(width: int, height: int, noise_seed : int, res_scale : float = 1) -> Dictionary:
-	var map_data = {}
+func generate_height_map(width: int, height: int, noise_seed : int, res_scale : float = 1) -> Dictionary[Vector2, float]:
+	var map_data: Dictionary[Vector2, float] = {}
 
 	
 	# --- 1. TERRAIN NOISE ---
