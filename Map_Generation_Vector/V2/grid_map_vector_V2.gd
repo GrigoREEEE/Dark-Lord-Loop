@@ -4,7 +4,6 @@ extends Node2D
 
 @export var river_mode_selector: OptionButton
 @export var save_button: Button
-@export var lake_debug_button: Button
 
 # River Display Mode
 enum RiverDisplayMode {
@@ -38,8 +37,8 @@ var _rivers: Array[River] = []
 
 func _ready():
 	reference_width = 400
-	setup_buttons()
-	add_fps_counter()
+	#setup_buttons()
+	#add_fps_counter()
 	noise_seed = 663202794#randi()
 	print("Noise seed is: %s" % noise_seed)
 	
@@ -73,7 +72,6 @@ func _ready():
 	update_map_visuals()
 	#save_map_to_png("res://image.png")
 
-
 # Cache the texture so we don't regenerate it every frame
 var _map_texture: ImageTexture
 
@@ -106,12 +104,13 @@ func update_map_visuals():
 				RiverDisplayMode.DEBUG_SEGMENTS:
 					if not river.segments.is_empty():
 						for i in range(river.segments.size()):
-							var segment = river.segments[i]
+							var region: Region = river.segments[i] # Unpack as Region
 							# Rainbow logic for segments
 							var hue: float = float(i % 8) / 8.0
 							var draw_color: Color = Color.from_hsv(hue, 0.8, 1.0)
 							
-							for pos in segment:
+							# Iterate through the Region's points array
+							for pos in region.points:
 								if pos.x >= 0 and pos.y >= 0 and pos.x < grid_width and pos.y < grid_height:
 									img.set_pixel(int(pos.x), int(pos.y), draw_color)
 					else:
@@ -119,13 +118,15 @@ func update_map_visuals():
 
 				RiverDisplayMode.NORMAL:
 					if not river.segments.is_empty():
-						for segment in river.segments:
-							for pos in segment:
+						for region: Region in river.segments: # Type hint as Region
+							# Iterate through the Region's points array
+							for pos in region.points:
 								if pos.x >= 0 and pos.y >= 0 and pos.x < grid_width and pos.y < grid_height:
 									img.set_pixel(int(pos.x), int(pos.y), base_river_color)
 					else:
 						_draw_simple_river_path(img, river, base_river_color)
 
+	# *(Note: If you are still using the lake debug display from earlier, you can safely paste the DRAW LAKES block right here!)*
 
 	# 4. Create or Update the GPU Texture
 	if _map_texture:
@@ -145,7 +146,6 @@ func _draw_simple_river_path(img: Image, river, color: Color):
 func _draw():
 	if _map_texture:
 		draw_texture_rect(_map_texture, Rect2(0, 0, grid_width * cell_size, grid_height * cell_size), false)
-
 
 func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
 	if is_ocean:
@@ -176,72 +176,6 @@ func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
 			return Color(1.0, 1.0, 1.0, 1.0)  # Absolute peaks
 		else:
 			return Color(0.824, 0.001, 0.824, 1.0)  # Error
-		
-func add_fps_counter():
-	var canvas_layer = CanvasLayer.new()
-	add_child(canvas_layer)
-	var fps_label = Label.new()
-	canvas_layer.add_child(fps_label)
-	fps_label.position = Vector2(10, 10)
-	fps_label.modulate = Color(0, 1, 0) # Green text
-	get_tree().process_frame.connect(func():
-		var fps = Engine.get_frames_per_second()
-		fps_label.text = "FPS: " + str(fps)
-	)
-
-func setup_buttons():
-	# Setup the dropdown options
-	river_mode_selector.add_item("Normal Rivers", RiverDisplayMode.NORMAL)
-	river_mode_selector.add_item("Debug Segments", RiverDisplayMode.DEBUG_SEGMENTS)
-	river_mode_selector.add_item("Hide Rivers", RiverDisplayMode.HIDDEN)
-	river_mode_selector.item_selected.connect(_on_river_mode_changed)
-	save_button.pressed.connect(_on_save_button_pressed)
-	
-	
-func _on_river_mode_changed(index: int):
-	current_river_mode = river_mode_selector.get_item_id(index) as RiverDisplayMode
-	update_map_visuals()
-
-func save_map_to_disk():
-	if _map_texture == null:
-		print("Error: No map texture to save.")
-		return
-
-	# 1. Get the image data from the texture
-	var img = _map_texture.get_image()
-	
-	# 2. Ensure the directory exists
-	var base_dir = "res://pictures/"
-	# specific for exported games use: var base_dir = "user://pictures/"
-	
-	var dir = DirAccess.open("res://")
-	if not dir.dir_exists(base_dir):
-		# Create the directory if it doesn't exist
-		var err = dir.make_dir_recursive(base_dir)
-		if err != OK:
-			print("Error creating directory: ", err)
-			return
-
-	# 3. Generate a unique filename using the current time
-	var time = Time.get_datetime_dict_from_system()
-	var filename = "map_%04d-%02d-%02d_%02d-%02d-%02d.png" % [
-		time.year, time.month, time.day, 
-		time.hour, time.minute, time.second
-	]
-	
-	var full_path = base_dir + filename
-	
-	# 4. Save the file
-	var err = img.save_png(full_path)
-	
-	if err == OK:
-		print("Map saved successfully to: ", full_path)
-		# Refresh the filesystem so the new file appears in the FileSystem dock (Editor only)
-	else:
-		print("Failed to save map. Error code: ", err)
-
-func _on_save_button_pressed():
-	save_map_to_disk()
 
 func _unhandled_input(event: InputEvent):
 	# Check if the event is a mouse button click
@@ -267,3 +201,15 @@ func _unhandled_input(event: InputEvent):
 				
 				# Print to the Output console
 				print("📍 Map Clicked - Grid Pos: ", grid_pos, " | Elevation: ", elevation)
+				
+# Retrieves the elevation data for a specific X, Y coordinate.
+# Returns the elevation as a float, or -1.0 if the cell doesn't exist.
+func get_elevation_at(map_data: Dictionary, x: int, y: int) -> float:
+	var pos := Vector2(x, y)
+	
+	# Check if the coordinate actually exists in our generated map
+	if map_data.has(pos):
+		return map_data[pos]
+	else:
+		push_warning("Coordinate not found in map data: ", pos)
+		return -1.0 # Return an impossible height to indicate an error

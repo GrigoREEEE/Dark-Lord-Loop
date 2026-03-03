@@ -1,11 +1,10 @@
 class_name Water_Body
-extends RefCounted   # or Resource if you want to serialize
+extends RefCounted  
 
 var id: String = ""
 var water_type: String = ""   # "River", "Lake", "Ocean"
-var water_mass: Array[Vector2] = []
-var is_proper: bool = true
 var all_cells: Array[Vector2] = []
+var segments: Array[Region] = []
 
 func get_area() -> float:
 	return 0.0  # Overridden by lakes/oceans

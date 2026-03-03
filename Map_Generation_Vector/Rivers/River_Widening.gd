@@ -45,17 +45,19 @@ func widen_river_iterative(
 	
 	var segment_data_cache = []
 	for i in range(river.segments.size()):
-		var segment = river.segments[i]
+		var region: Region = river.segments[i] # Now accessing the Region object
 		var core_cells: Array[Vector2] = []
-		for cell in segment:
+		
+		# Loop through the Region's points
+		for cell in region.points:
 			if path_set.has(cell):
 				core_cells.append(cell)
 		
 		var bed_height = 0.0
 		if not core_cells.is_empty():
 			bed_height = map_data[core_cells[0]]
-		elif not segment.is_empty():
-			bed_height = map_data[segment[0]]
+		elif not region.points.is_empty():
+			bed_height = map_data[region.points[0]]
 			
 		segment_data_cache.append({
 			"core_cells": core_cells,
@@ -75,14 +77,15 @@ func widen_river_iterative(
 			if segment_budgets[i] <= 0:
 				continue
 				
-			var segment = river.segments[i]
+			var region: Region = river.segments[i]
 			var seg_data = segment_data_cache[i]
 			var is_mouth = i >= start_of_mouth
 			
 			var candidates = []
 			var candidate_set = {}
 			
-			for cell in segment:
+			# Search neighbors around the Region's points
+			for cell in region.points:
 				for d in directions:
 					var neighbor = cell + d
 					
@@ -95,31 +98,36 @@ func widen_river_iterative(
 					var target_height = map_data[neighbor]
 					var cost = 0.0
 					
-					var effective_base = flood_cost_base
-					var effective_dist = flood_distance_cost
-					
-					# Lowland Discount (0.07 < h <= 0.12)
-					if target_height <= 0.12:
-						effective_base *= 0.8 
-						effective_dist *= 0.8
-					
-					# Mouth Distance Discount
-					if is_mouth:
-						effective_dist *= 0.3
-					
-					cost = effective_base
-					
-					# Climb Cost (Only calculated if not free)
-					var height_diff = target_height - seg_data.bed_height
-					if height_diff > climb_tolerance:
-						cost += (height_diff - climb_tolerance) * flood_climb_cost
-					
-					# Distance Cost
-					var min_dist = 999.0
-					for core in seg_data.core_cells:
-						var d_val = core.distance_to(neighbor)
-						if d_val < min_dist: min_dist = d_val
-					cost += min_dist * effective_dist
+					# FREE FLOODING for lowlands (lakes/depressions)
+					if target_height <= 0.07:
+						cost = 0.0
+					else:
+						var effective_base = flood_cost_base
+						var effective_dist = flood_distance_cost
+						
+						# Lowland Discount (0.07 < h <= 0.12)
+						if target_height <= 0.12:
+							effective_base *= 0.8 
+							effective_dist *= 0.8
+						
+						# Mouth Distance Discount
+						if is_mouth:
+							effective_dist *= 0.3
+						
+						cost = effective_base
+						
+						# Climb Cost
+						var height_diff = target_height - seg_data.bed_height
+						if height_diff > climb_tolerance:
+							cost += (height_diff - climb_tolerance) * flood_climb_cost
+						
+						# Distance Cost
+						var min_dist = 999.0
+						for core in seg_data.core_cells:
+							var d_val = core.distance_to(neighbor)
+							if d_val < min_dist: min_dist = d_val
+						cost += min_dist * effective_dist
+						
 					candidates.append({ "pos": neighbor, "cost": cost })
 					candidate_set[neighbor] = true
 			
@@ -130,37 +138,71 @@ func widen_river_iterative(
 				
 			candidates.sort_custom(func(a, b): return a.cost < b.cost)
 			
-			var batch_size = 3 
+			var expensive_fill_limit = 3 
+			var expensive_fill_count = 0
 			
-			for k in range(min(candidates.size(), batch_size)):
-				var best = candidates[k]
+			for best in candidates:
+				# Restrict costly expansions, but allow unlimited free filling
+				if best.cost > 0.0 and expensive_fill_count >= expensive_fill_limit:
+					break
 				
 				if segment_budgets[i] >= best.cost:
 					segment_budgets[i] -= best.cost
-					segment.append(best.pos)
+					
+					# Append to the Region's point array and update its size
+					region.points.append(best.pos)
+					region.size = region.points.size()
+					
 					river_cells_set[best.pos] = true
 					segments_active = true 
+					
+					if best.cost > 0.0:
+						expensive_fill_count += 1
 				else:
 					segment_budgets[i] = -1.0
 					break
 
 
-# Combines the last 'n' segments of the river into a single "Delta Segment".
+# Combines the last 'n' regions of the river into a single "Delta Region".
 func merge_segments(river: River, n_segments_to_merge: int):
 	if river.segments.size() < n_segments_to_merge + 1:
 		return # River too short to make a delta
 		
-	var delta_cells: Array[Vector2] = []
+	var delta_points: Array[Vector2] = []
+	var popped_regions: Array[Region] = []
 	
-	# 1. Collect all cells from the last N segments
+	# 1. Collect all points from the last N regions
 	# We iterate backwards to pop them off easily
 	for k in range(n_segments_to_merge):
-		var segment = river.segments.pop_back()
-		delta_cells.append_array(segment)
+		var popped_region: Region = river.segments.pop_back()
+		delta_points.append_array(popped_region.points)
+		popped_regions.append(popped_region)
 		
-	# 2. Add the combined cluster back as a single segment
-	# (We reverse the collection order if strictly needed, but for a set of cells it implies no order)
-	river.segments.append(delta_cells)
+	# 2. Identify the surviving upstream region and clean up connections
+	var previous_region: Region = null
+	if not river.segments.is_empty():
+		previous_region = river.segments.back()
+		
+		# Break the old forward connections to the deleted regions
+		for popped in popped_regions:
+			if previous_region.regions_connect.has(popped):
+				previous_region.regions_connect.erase(popped)
+
+	# 3. Create the new combined Delta Region
+	var delta_region = Region.new()
+	delta_region.id = randi()
+	delta_region.type = "Water"
+	delta_region.subtype = "River Delta"
+	delta_region.points = delta_points
+	delta_region.size = delta_points.size()
 	
-	print("Delta created. River now has ", river.segments.size(), " segments.")
+	# 4. Link the new Delta back to the surviving main river
+	if previous_region != null:
+		previous_region.regions_connect.append(delta_region)
+		delta_region.regions_connect.append(previous_region)
+		
+	# 5. Add the combined cluster back as a single region
+	river.segments.append(delta_region)
+	
+	print("Delta Region created. River now has ", river.segments.size(), " segments.")
 	

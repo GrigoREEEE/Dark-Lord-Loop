@@ -7,8 +7,11 @@ class_name River_Erosion
 ########################################
 
 # Modifies the map_data in-place to carve a valley around the river
-func apply_river_erosion(map_data: Dictionary, river: River, start_radius: float, end_radius: float, start_strength: float, end_strength: float, res_scale : float = 1.0):
-	
+func apply_river_erosion(map_data: Dictionary, river: River, erosion_data: Dictionary[String, float], res_scale : float = 1.0):
+	var start_radius: float = erosion_data["start radius"]
+	var end_radius: float = erosion_data["end radius"]
+	var start_strength: float = erosion_data["start erosion"]
+	var end_strength: float = erosion_data["end erosion"]
 	end_radius = int(end_radius * res_scale)
 	start_radius = int(start_radius * res_scale)
 	

@@ -7,7 +7,18 @@ var to_merge: int = 0 #number of the main river segments we merge to form delta
 var bands_quantity: int = 5
 var delta_streams: Dictionary[int, int] = {3:1,2:1,1:1} #size and number of streams that form the delta
 var bands_rivers: Dictionary[int, int] = {0:1, 1:1, 2:1, 3:1, 4:1}
-
+var main_river_erosion: Dictionary[String, float] = {
+"start radius": 29.0,
+"end radius": 30.0,
+"start erosion": 0.85,
+"end erosion": 0.2
+}
+var side_river_erosion: Dictionary[String, float] = {
+"start radius": 5.0,
+"end radius": 10.0,
+"start erosion": 0.4,
+"end erosion": 0.05
+}
 
 func handle_rivers(
 	map_width: int,
@@ -64,46 +75,65 @@ func setup_river(
 	else:
 		river_start_pos =  Source_Selector.select_river_source(terrain_data, _ocean_mask, map_width, band["start"], band["end"], noise_seed)
 		river_direction = get_random_river_direction((noise_seed + band["start"] + band["end"]))
-	print("River Source is %s" % river_start_pos)
-	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, map_width, map_height)
-	_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 5, res_scale)
+	#print("River Source is %s" % river_start_pos)
+
+	# --- IN-PLACE DICTIONARY UPDATES ---
+	var temp_ocean = ocean_id.ocean_vs_land(terrain_data, map_width, map_height)
+	_ocean_mask.clear()
+	_ocean_mask.merge(temp_ocean)
 	
-		
+	var temp_beach = beach_id.generate_beach_mask(_ocean_mask, 5, res_scale)
+	_beach_mask.clear()
+	_beach_mask.merge(temp_beach)
+	
+	
 	## Generate the River
 	my_river = river_gen.generate_natural_river(map_width, map_height, _ocean_mask, noise_seed, river_start_pos, river_direction, res_scale)
 	if check_river_breach(my_river, _beach_mask, mouth_segments):
 		print("River touches beach!")
 		noise_seed = randi()
-		print("New noise seed is: %s" % noise_seed)
-		my_river = null
-		setup_river(type, map_width, map_height, terrain_data, _ocean_mask, _beach_mask, _delta_mask, band, noise_seed, res_scale)
+		print("New river noise seed is: %s" % noise_seed)
+		return setup_river(type, map_width, map_height, terrain_data, _ocean_mask, _beach_mask, _delta_mask, band, noise_seed, res_scale)
 	else:
+		Profiler.start("Erosion")
 		## Apply Erosion
 		if type == "main":
-			erosion.apply_river_erosion(terrain_data, my_river, 29.0, 30.0, 0.85, 0.2, res_scale) #5, 30, 0.9, 0.1)
+			erosion.apply_river_erosion(terrain_data, my_river, main_river_erosion, res_scale) #5, 30, 0.9, 0.1)
+		#else:
+			#erosion.apply_river_erosion(terrain_data, my_river, side_river_erosion, res_scale) #5, 30, 0.9, 0.1)
+		Profiler.end("Erosion")
 		## Check where the ocean is again (due to erosion)
 		_ocean_mask = ocean_id.ocean_vs_land(terrain_data, map_width, map_height)
+		## Remove the river from the ocean
+		river_gen.clean_river_path(my_river, _ocean_mask)
+		## Break the river into segments
+		my_river.create_segments(10 * res_scale)
 		if type == "main":
-			## Remove the river from the ocean
-			river_gen.clean_river_path(my_river, _ocean_mask)
-			## Break the river into segments
-			my_river.create_segments(10 * res_scale)
+			print("enter main!")
 			to_merge = my_river.resegment_delta(mouth_segments, 1 * res_scale) + 1
 			
 			## Expand the river
 			river_expander.widen_river_iterative(terrain_data, my_river, _ocean_mask, mouth_segments, 20.0 * res_scale, 1.0 * res_scale)
 			river_expander.merge_segments(my_river, to_merge)
-			#_delta_mask = delta_maker.create_delta_mask(my_river, map_width, map_height)
-			_delta_mask = delta_maker.create_delta_mask2(my_river)
+			# --- IN-PLACE DICTIONARY UPDATE ---
+			var temp_delta = delta_maker.create_delta_mask2(my_river)
+			_delta_mask.clear()
+			_delta_mask.merge(temp_delta)
 			## Make the delta
 			delta_maker.generate_delta(my_river, _ocean_mask, delta_streams, noise_seed)
 			delta_maker.naturalize_delta_islands(terrain_data, my_river, _delta_mask)
-			delta_maker.erode_delta_edges(terrain_data, _delta_mask)
+			delta_maker.erode_delta_edges(terrain_data, _delta_mask, noise_seed)
+			# --- IN-PLACE DICTIONARY UPDATE ---
+			temp_delta = delta_maker.create_delta_mask2(my_river,3)
+			_delta_mask.clear()
+			_delta_mask.merge(temp_delta)
 		
 		Profiler.end("total river generation")
 		return my_river
+
+
 	
-	# Checks if any "non-mouth" segment has accidentally grown into the beach.
+# Checks if any "non-mouth" segment has accidentally grown into the beach.
 # Returns TRUE if a breach is detected (bad state).
 # Returns FALSE if the river is contained correctly.
 func check_river_breach(river: River, beach_mask: Dictionary, mouth_segments_count: int) -> bool:

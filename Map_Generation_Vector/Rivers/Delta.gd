@@ -12,22 +12,30 @@ func generate_delta(
 	if river.segments.size() < 2: return
 
 	var last_idx = river.segments.size() - 1
-	var delta_segment = river.segments[last_idx]
-	var upstream_segment = river.segments[last_idx - 1]
+	var delta_region: Region = river.segments[last_idx]
+	var upstream_region: Region = river.segments[last_idx - 1]
 	
 	# 1. SETUP SANDBOX
 	var boundary_set = {}
-	for cell in delta_segment: boundary_set[cell] = true
-	delta_segment.clear() # Wipe clean
+	for cell in delta_region.points: 
+		boundary_set[cell] = true
+		
+	# Wipe clean the Region's data
+	delta_region.points.clear() 
+	delta_region.size = 0
 	
 	# 2. FIND SOURCES & FLOW
 	var sources = []
 	var directions = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
-	for cell in upstream_segment:
+	
+	# Look at the upstream Region's points to find where water enters the delta sandbox
+	for cell in upstream_region.points:
 		for d in directions:
 			if boundary_set.has(cell + d):
 				sources.append(cell); break
-	if sources.is_empty(): sources.append(upstream_segment.back())
+				
+	if sources.is_empty(): 
+		sources.append(upstream_region.points.back())
 	
 	var avg_source = Vector2.ZERO
 	for s in sources: avg_source += s
@@ -59,7 +67,7 @@ func generate_delta(
 	
 	# 4. GENERATE INTERNAL STREAMS (Natural Wander)
 	var rng = RandomNumberGenerator.new()
-	rng.randomize()
+	rng.seed = noise_seed # Tied to your world seed for consistency
 	
 	for width_key in stream_config.keys():
 		var count = stream_config[width_key]
@@ -95,8 +103,9 @@ func generate_delta(
 							if boundary_set.has(n):
 								final_delta_set[n] = true
 
-	# Commit to river segment
-	delta_segment.append_array(final_delta_set.keys())
+	# Commit back to the Delta Region object
+	delta_region.points.append_array(final_delta_set.keys())
+	delta_region.size = delta_region.points.size()
 
 
 # Generates a stream that flows until it hits the ocean.
@@ -104,7 +113,7 @@ func generate_delta(
 # - Strictly constrained to 'boundary' set.
 # - Uses momentum + noise for natural curves.
 func _generate_smart_stream(
-	sources: Array, 
+	sources: Array, # Array of Vector2
 	flow_dir: Vector2, 
 	boundary: Dictionary, 
 	ocean_mask: Dictionary,
@@ -112,8 +121,10 @@ func _generate_smart_stream(
 ) -> Array[Vector2]:
 	
 	var rng = RandomNumberGenerator.new()
-	if noise_seed != 0: rng.seed = noise_seed
-	else: rng.randomize()
+	if noise_seed != 0: 
+		rng.seed = noise_seed
+	else: 
+		rng.randomize()
 	
 	# SETUP NOISE
 	var noise = FastNoiseLite.new()
@@ -121,20 +132,21 @@ func _generate_smart_stream(
 	noise.frequency = 0.04 # Low frequency for wide, lazy meanders
 	
 	# 1. INITIALIZATION
-	var start_node = sources[rng.randi() % sources.size()]
-	var pos_f = Vector2(start_node) 
-	var velocity = flow_dir.normalized()
+	# Safely cast the starting node to Vector2
+	var start_node: Vector2 = sources[rng.randi() % sources.size()]
+	var pos_f: Vector2 = start_node 
+	var velocity: Vector2 = flow_dir.normalized()
 	
 	# Config
-	var wander_strength = 1.0 
-	var gravity = 0.08  # Very low gravity = allows crossing sideways
+	var wander_strength: float = 1.0 
+	var gravity: float = 0.08  # Very low gravity = allows crossing sideways
 	
 	# 2. PHYSICS LOOP
-	var path : Array[Vector2] = [start_node]
-	var visited_in_this_path = {start_node: true} # Only avoid self-intersection
+	var path: Array[Vector2] = [start_node]
+	var visited_in_this_path = {start_node: true} 
 	
-	var steps = 0
-	var max_steps = boundary.size() * 4 # Allow long, winding paths
+	var steps: int = 0
+	var max_steps: int = boundary.size() * 4 # Allow long, winding paths
 	
 	while steps < max_steps:
 		steps += 1
@@ -147,7 +159,7 @@ func _generate_smart_stream(
 		# Rotate velocity
 		velocity = velocity.rotated(steer_angle)
 		
-		# Apply weak gravity (pull towards ocean)
+		# Apply weak gravity (pull towards ocean/main flow)
 		velocity = velocity.lerp(flow_dir, gravity).normalized()
 		
 		# B. MOVE (Sub-pixel)
@@ -165,20 +177,19 @@ func _generate_smart_stream(
 		# If we hit the edge of the fan, we must bounce or slide back in.
 		if not boundary.has(next_cell):
 			# Hard Bounce: Reflect velocity back towards the center/flow
-			# We mix the flow_dir in strongly to force it back on track
-			velocity = velocity.lerp(flow_dir, 0.5).normalized()
+			velocity = velocity.lerp(flow_dir, 0.6).normalized()
 			
 			# Nudge position slightly back to safe ground to prevent sticking
-			pos_f = pos_f.lerp(Vector2(path.back()), 0.5)
+			# Using the last valid integer position ensures we don't float out of bounds
+			pos_f = pos_f.lerp(path.back(), 0.5)
 			continue
 			
 		# 3. SELF-INTERSECTION (Loop prevention)
-		# We allow crossing OTHER streams, but we shouldn't loop our OWN path tightly.
-		# (Checking the last 10 steps is usually enough to prevent instant 180s)
 		if visited_in_this_path.has(next_cell):
-			# Allow crossing self if it's an old part of the path (loops), 
-			# but prevent stalling on the same pixel.
+			# Prevent stalling on the exact same pixel
 			if next_cell == path.back():
+				# Give it a tiny nudge forward along the flow direction to break the stall
+				pos_f += flow_dir * 0.5
 				continue 
 		
 		# D. COMMIT
@@ -193,48 +204,59 @@ func _generate_smart_stream(
 # Helper to deterministically extract the outer edges of the delta shape.
 # Returns an Array containing two paths: [left_edge_path, right_edge_path]
 func _extract_delta_edge_paths(boundary_set: Dictionary, sources: Array, flow_dir: Vector2) -> Array:
-	var edge_cells = []
-	var directions = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+	var edge_cells: Array[Vector2] = []
+	var directions: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
 	
 	# 1. Find all cells that are on the edge boundary
-	for cell in boundary_set:
-		var is_edge = false
+	for cell: Vector2 in boundary_set:
+		var is_edge: bool = false
 		for d in directions:
+			# If a neighbor is missing from the boundary_set, this cell touches the outside.
 			if not boundary_set.has(cell + d):
 				is_edge = true
 				break
+				
 		if is_edge:
 			edge_cells.append(cell)
 			
-	if edge_cells.is_empty(): return [[], []]
+	if edge_cells.is_empty(): 
+		return [[], []]
 	
 	# 2. Calculate Center Line (to split Left vs Right)
-	var avg_source = Vector2.ZERO
-	for s in sources: avg_source += s
-	avg_source /= sources.size()
+	var avg_source := Vector2.ZERO
+	for s: Vector2 in sources: 
+		avg_source += s
+		
+	# Cast to float to prevent integer division truncation
+	avg_source /= float(sources.size()) 
 	
-	# A vector perpendicular to flow, pointing "Right"
-	var right_vec = Vector2(-flow_dir.y, flow_dir.x)
+	# Create a vector exactly 90 degrees to the flow direction
+	var right_vec := flow_dir.rotated(PI / 2.0)
 	
-	var left_path = []
-	var right_path = []
+	var left_path: Array[Vector2] = []
+	var right_path: Array[Vector2] = []
 	
 	# 3. Split edges based on which side of the center line they are on
-	for cell in edge_cells:
-		# Vector from source center to this edge cell
-		var to_cell = cell - avg_source
-		# Dot product determines if it's to the left or right of the flow
-		var side_dot = to_cell.dot(right_vec)
+	for cell: Vector2 in edge_cells:
+		# Vector pointing from the delta's source center to this specific edge cell
+		var to_cell := cell - avg_source
 		
-		if side_dot < 0:
+		# The dot product tells us how much 'to_cell' aligns with 'right_vec'.
+		# Negative = Left side, Positive = Right side.
+		var side_dot := to_cell.dot(right_vec)
+		
+		if side_dot < 0.0:
 			left_path.append(cell)
 		else:
 			right_path.append(cell)
 			
 	# 4. Sort paths upstream-to-downstream for clean rasterization
-	var sort_func = func(a, b): return a.dot(flow_dir) < b.dot(flow_dir)
-	left_path.sort_custom(sort_func)
-	right_path.sort_custom(sort_func)
+	# By dotting the position against the flow direction, we measure how "far down" the river it is.
+	var sort_upstream_downstream = func(a: Vector2, b: Vector2) -> bool: 
+		return a.dot(flow_dir) < b.dot(flow_dir)
+		
+	left_path.sort_custom(sort_upstream_downstream)
+	right_path.sort_custom(sort_upstream_downstream)
 	
 	return [left_path, right_path]
 
@@ -261,37 +283,62 @@ func create_delta_mask(river: River, width: int, height: int) -> Dictionary:
 	return mask
 	
 # Creates a boolean mask (Dictionary) where every cell in the delta is TRUE.
-# Returns empty dictionary if river has no segments.
-func create_delta_mask2(river: River) -> Dictionary[Vector2, bool]:
-	var mask : Dictionary[Vector2, bool] = {}
+# - spread_radius: Expands the mask outward by N cells.
+# Returns an empty dictionary if the river has no segments.
+func create_delta_mask2(river: River, spread_radius: int = 0) -> Dictionary[Vector2, bool]:
+	var mask: Dictionary[Vector2, bool] = {}
 	
 	if river.segments.is_empty():
 		return mask
 		
-	# The delta is defined as the very last segment in the river
-	var delta_segment = river.segments[-1]
+	# The delta is defined as the very last Region in the river
+	var delta_region: Region = river.segments.back()
+	var current_boundary: Array[Vector2] = []
 	
-	for cell in delta_segment:
+	# 1. Populate the initial mask with the exact delta cells
+	for cell: Vector2 in delta_region.points:
 		mask[cell] = true
+		current_boundary.append(cell)
+		
+	# 2. Spread the mask outward by N cells (Dilation)
+	if spread_radius > 0:
+		var directions: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+		
+		# Expand layer by layer
+		for i in range(spread_radius):
+			var next_boundary: Array[Vector2] = []
+			
+			for cell: Vector2 in current_boundary:
+				for d in directions:
+					var neighbor: Vector2 = cell + d
+					
+					# If it's not already in the mask, add it and mark it for the next expansion layer
+					if not mask.has(neighbor):
+						mask[neighbor] = true
+						next_boundary.append(neighbor)
+						
+			# Move to the newly added outer edge for the next loop
+			current_boundary = next_boundary
 		
 	return mask
 
 # Identifies islands within the delta and sculpts their elevation.
 # - Islands are defined as (Delta Mask - River Water).
 # - Elevation is calculated based on distance from the water edge.
-# - Height ranges from 0.12 (edge) to 0.18 (center).
+# - Height ranges from 0.12 (edge) to 0.25 (center).
 func naturalize_delta_islands(map_data: Dictionary, river: River, delta_mask: Dictionary):
 	if river.segments.is_empty(): return
 
 	# 1. IDENTIFY "RAW" ISLAND CELLS
 	# An island cell is inside the delta mask but NOT in the river water.
-	var delta_water_segment = river.segments[-1]
-	var water_set = {}
-	for cell in delta_water_segment:
+	var delta_water_region: Region = river.segments.back()
+	var water_set: Dictionary[Vector2, bool] = {}
+	
+	for cell: Vector2 in delta_water_region.points:
 		water_set[cell] = true
 		
-	var all_island_cells = {}
-	for cell in delta_mask.keys():
+	var all_island_cells: Dictionary[Vector2, bool] = {}
+	for cell: Vector2 in delta_mask.keys():
 		if delta_mask[cell] == true and not water_set.has(cell):
 			all_island_cells[cell] = true
 
@@ -301,23 +348,23 @@ func naturalize_delta_islands(map_data: Dictionary, river: River, delta_mask: Di
 	# 2. GROUP INTO DISTINCT ISLANDS
 	# We use flood-fill to find connected clumps of land.
 	var islands: Array[Array] = []
-	var visited = {}
+	var visited: Dictionary[Vector2, bool] = {}
+	var directions: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
 	
-	for cell in all_island_cells.keys():
+	for cell: Vector2 in all_island_cells.keys():
 		if visited.has(cell): continue
 		
 		# Start a new island
 		var current_island: Array[Vector2] = []
-		var stack = [cell]
+		var stack: Array[Vector2] = [cell]
 		visited[cell] = true
 		
 		while not stack.is_empty():
-			var current = stack.pop_back()
+			var current: Vector2 = stack.pop_back()
 			current_island.append(current)
 			
-			var neighbors = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
-			for d in neighbors:
-				var n = current + d
+			for d in directions:
+				var n: Vector2 = current + d
 				# If neighbor is valid land and not visited
 				if all_island_cells.has(n) and not visited.has(n):
 					visited[n] = true
@@ -329,18 +376,18 @@ func naturalize_delta_islands(map_data: Dictionary, river: River, delta_mask: Di
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
 	
-	for island in islands:
+	for island: Array in islands:
 		# A. Compute Distance Field (Manhattan distance from water)
 		# We identify "edge" cells first (those touching water or empty space)
-		var distances = {}
-		var queue = []
+		var distances: Dictionary[Vector2, int] = {}
+		var queue: Array[Vector2] = []
 		
 		# Initialize edges
-		for cell in island:
-			var is_edge = false
-			var neighbors = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
-			for d in neighbors:
-				var n = cell + d
+		for cell: Vector2 in island:
+			var is_edge: bool = false
+			
+			for d in directions:
+				var n: Vector2 = cell + d
 				# It's an edge if the neighbor is WATER or OUT OF DELTA
 				if not all_island_cells.has(n):
 					is_edge = true
@@ -353,66 +400,81 @@ func naturalize_delta_islands(map_data: Dictionary, river: River, delta_mask: Di
 				distances[cell] = -1 # Unprocessed interior
 
 		# BFS to fill interior distances
-		var max_dist = 0
-		var head = 0
+		var max_dist: int = 0
+		var head: int = 0
 		while head < queue.size():
-			var current = queue[head]
+			var current: Vector2 = queue[head]
 			head += 1
-			var d_val = distances[current]
+			var d_val: int = distances[current]
 			
 			if d_val > max_dist: max_dist = d_val
 			
-			var neighbors = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
-			for dir in neighbors:
-				var n = current + dir
+			for dir in directions:
+				var n: Vector2 = current + dir
 				# If it's part of this island and hasn't been distance-mapped yet
 				if distances.has(n) and distances[n] == -1:
 					distances[n] = d_val + 1
 					queue.append(n)
 		
 		# B. Apply Heights
-		# Range: 0.12 (Edge) -> 0.18 (Center)
-		# Formula: 0.12 + (0.06 * (dist / max_dist))
-		for cell in island:
-			var dist = distances[cell]
+		# Range: 0.12 (Edge) -> 0.25 (Center)
+		# Formula: 0.12 + (0.13 * (dist / max_dist))
+		for cell: Vector2 in island:
+			var dist: int = distances[cell]
 			
-			var height_factor = 0.0
+			var height_factor: float = 0.0
 			if max_dist > 0:
 				height_factor = float(dist) / float(max_dist)
 			
 			# Lerp height
-			var base_height = lerp(0.12, 0.25, height_factor)
+			var base_height: float = lerp(0.12, 0.25, height_factor)
 			
 			# Add subtle noise for roughness (range -0.005 to +0.005)
-			var noise = rng.randf_range(-0.005, 0.005)
+			var noise: float = rng.randf_range(-0.005, 0.005)
 			
 			map_data[cell] = base_height + noise
 
-# Erodes the terrain adjacent to the delta to create a smooth transition.
+# Erodes the terrain adjacent to the delta to create an uneven, natural transition.
 # - erosion_radius: How many pixels out from the delta to affect.
 # - erosion_strength: How much to subtract from the height (0.05 is subtle, 0.1 is strong).
+# - noise_seed: Seed for the erosion variation (pass your world seed here).
+# - min_height: The absolute lowest the erosion is allowed to dig (unless already lower).
 func erode_delta_edges(
 	map_data: Dictionary, 
-	delta_mask: Dictionary, 
+	delta_mask: Dictionary,
+	noise_seed: int = 0,
 	erosion_radius: int = 4, 
-	erosion_strength: float = 0.2
+	erosion_strength: float = 0.2,
+	min_height: float = 0.15
 ):
 	if delta_mask.is_empty(): return
 
+	# Setup Noise for organic unevenness
+	var noise = FastNoiseLite.new()
+	noise.seed = noise_seed if noise_seed != 0 else randi()
+	# Higher frequency = more jagged banks. Lower = smoother, wider variance.
+	noise.frequency = 0.15 
+
 	# 1. IDENTIFY BORDER CELLS
-	# We want cells that are NOT in the delta, but are within 'radius' of it.
-	var cells_to_erode = {}
-	var current_boundary = delta_mask.keys()
-	var processed = delta_mask.duplicate() # Don't erode the delta itself, it's already water
+	var cells_to_erode: Dictionary[Vector2, float] = {}
+	
+	var current_boundary: Array[Vector2] = []
+	current_boundary.assign(delta_mask.keys())
+	
+	var processed: Dictionary = delta_mask.duplicate()
+	var directions: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
 	
 	# Iterative expansion (Breadth-First Search)
 	for i in range(erosion_radius):
-		var next_boundary = []
+		var next_boundary: Array[Vector2] = []
 		
-		for cell in current_boundary:
-			var neighbors = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
-			for d in neighbors:
-				var n = cell + d
+		# Calculate the base drop for this "ring" of distance
+		var falloff: float = 1.0 - (float(i) / float(erosion_radius))
+		var base_drop: float = erosion_strength * falloff
+		
+		for cell: Vector2 in current_boundary:
+			for d in directions:
+				var n: Vector2 = cell + d
 				
 				if not map_data.has(n): continue
 				if processed.has(n): continue
@@ -421,26 +483,28 @@ func erode_delta_edges(
 				processed[n] = true
 				next_boundary.append(n)
 				
-				# Calculate erosion factor based on distance
-				# Closer to delta = stronger erosion
-				# i=0 (immediate neighbor) -> 100% strength
-				# i=radius (far neighbor) -> 0% strength
-				var falloff = 1.0 - (float(i) / float(erosion_radius))
-				cells_to_erode[n] = erosion_strength * falloff
+				# --- UNEVEN NOISE MODULATION ---
+				var raw_noise: float = (noise.get_noise_2dv(n) + 1.0) / 2.0
+				var uneven_multiplier: float = lerp(0.2, 1.0, raw_noise)
+				
+				cells_to_erode[n] = base_drop * uneven_multiplier
 		
 		current_boundary = next_boundary
 
 	# 2. APPLY EROSION
-	for cell in cells_to_erode.keys():
-		var drop = cells_to_erode[cell]
-		var current_h = map_data[cell]
+	for cell: Vector2 in cells_to_erode.keys():
+		var drop: float = cells_to_erode[cell]
+		var current_h: float = map_data[cell]
 		
 		# Apply the drop
-		var new_h = current_h - drop
+		var new_h: float = current_h - drop
 		
-		# Clamp to ensure we don't accidentally dig a hole below sea level 
-		# unless that is intended (creating swamp). 
-		# Here we clamp to 0.05 (Marsh level) so it doesn't turn into deep ocean.
-		if new_h < 0.05: new_h = 0.05
+		# Determine the absolute floor for this specific cell.
+		# If it's already below min_height, its current height is the absolute floor.
+		var cell_floor: float = min(current_h, min_height)
+		
+		# Clamp to ensure we don't accidentally dig a hole below our dynamic floor
+		if new_h < cell_floor: 
+			new_h = cell_floor
 		
 		map_data[cell] = new_h
