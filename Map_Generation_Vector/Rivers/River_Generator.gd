@@ -10,7 +10,8 @@ class_name River_Generator
 func generate_natural_river(
 	width: int, 
 	height: int, 
-	ocean_mask: Dictionary, 
+	ocean: Pool, 
+	river_mask: Dictionary, 
 	noise_seed: int, 
 	start_pos: Vector2,
 	target_dir: Vector2,
@@ -46,6 +47,12 @@ func generate_natural_river(
 	# Allow more steps for diagonal paths
 	var max_steps: int = max(width, height) * 10 
 	
+	# OPTIMIZATION: Convert the ocean's Array to a temporary Dictionary 
+	# so we don't cause massive lag checking the array every single step.
+	var fast_ocean_check: Dictionary[Vector2, bool] = {}
+	for cell: Vector2 in ocean.all_cells:
+		fast_ocean_check[cell] = true
+	
 	# --- 3. FLOW LOOP ---
 	while step_count < max_steps:
 		step_count += 1
@@ -62,33 +69,13 @@ func generate_natural_river(
 		current_dir = current_dir.lerp(steer_vector, steer_strength)
 		current_dir = current_dir.lerp(target_dir, gravity_strength)
 		
-		## --- B. SIDE SENSOR LOGIC (Direction Agnostic) ---
-		## Calculate Left/Right relative to current flow
-		#var left_vec = current_dir.rotated(deg_to_rad(-90)).normalized()
-		#var right_vec = current_dir.rotated(deg_to_rad(90)).normalized()
-		#
-		#var push_force = Vector2.ZERO
-		#
-		## Check LEFT Sensor
-		#var left_sensor_pos = (current_pos_float + (left_vec * sensor_reach)).round()
-		#if ocean_mask.get(left_sensor_pos, false) == true:
-			#push_force += right_vec * repulsion_strength
-			#
-		## Check RIGHT Sensor
-		#var right_sensor_pos = (current_pos_float + (right_vec * sensor_reach)).round()
-		#if ocean_mask.get(right_sensor_pos, false) == true:
-			#push_force -= right_vec * repulsion_strength 
-			#
-		#current_dir += push_force
-		#current_dir = current_dir.normalized()
-		
 		# --- C. MOVE ---
 		current_pos_float += current_dir * 0.6 
 		
 		# --- D. BOUNDS & RECORD ---
 		var current_grid_pos = current_pos_float.round()
 		
-		# Universal Out-of-Bounds Check
+		# 1. Universal Out-of-Bounds Check
 		if (current_grid_pos.x < 0 or current_grid_pos.x >= width or 
 			current_grid_pos.y < 0 or current_grid_pos.y >= height):
 			
@@ -99,9 +86,23 @@ func generate_natural_river(
 			_add_unique_point(river.river_path, current_grid_pos)
 			break
 
-		if ocean_mask.get(current_grid_pos, false):
+		# 2. Check for Ocean Collision
+		if fast_ocean_check.has(current_grid_pos):
 			river.mouth = current_grid_pos
 			_add_unique_point(river.river_path, current_grid_pos)
+			
+			# Register this river with the Ocean
+			ocean.rivers_enter.append(river)
+			break
+			
+		# 3. Check for Collision with Another River
+		if river_mask.has(current_grid_pos):
+			river.mouth = current_grid_pos
+			_add_unique_point(river.river_path, current_grid_pos)
+			
+			# Extract the specific Region we hit and register this river to it
+			var hit_region: Region = river_mask[current_grid_pos]
+			hit_region.rivers_enter.append(river)
 			break
 			
 		_add_unique_point(river.river_path, current_grid_pos)

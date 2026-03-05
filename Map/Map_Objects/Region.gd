@@ -7,3 +7,5 @@ var subtype : String
 var regions_connect : Array[Region]
 var size : int 
 var points : Array[Vector2]
+var associated_water: Water_Body
+var rivers_enter : Array[River] = []

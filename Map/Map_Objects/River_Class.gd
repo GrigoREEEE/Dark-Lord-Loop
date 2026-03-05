@@ -8,8 +8,8 @@ var river_path: Array[Vector2] = []
 var segment_flow: Array[float] = []
 var river_mass: Array[Vector2] = []
 var is_proper : bool = true
-
-var enters_into
+var enters_into : Water_Body
+var rivers_enter : Array[River] = []
 
 # New function to partition the river into connected Region objects
 func create_segments(chunk_size: int) -> void:
@@ -41,7 +41,7 @@ func create_segments(chunk_size: int) -> void:
 # Helper function to instantiate, populate, and connect a River Region
 func _build_and_link_region(points: Array[Vector2], prev_region: Region) -> Region:
 	var new_region = Region.new()
-	
+	new_region.associated_water = self
 	# Populate Region Properties
 	# Using randi() for ID for now, but you could pass an incrementing counter if you prefer
 	new_region.id = randi() 
@@ -172,6 +172,7 @@ func merge_segments(n_segments_to_merge: int):
 
 	# 3. Create the new combined Delta Region
 	var delta_region = Region.new()
+	delta_region.associated_water = self
 	delta_region.id = randi()
 	delta_region.type = "Water"
 	delta_region.subtype = "River Delta"

@@ -33,6 +33,7 @@ var terrain_data: Dictionary[Vector2, float] = {} # Dictionary[Vector2, float]
 var _ocean_mask: Dictionary[Vector2, bool] = {} # Dictionary[Vector2, bool]
 var _beach_mask: Dictionary[Vector2, bool] = {} # Dictionary[Vector2, bool]
 var _delta_mask: Dictionary[Vector2, bool] = {} # Dictionary[Vector2, bool]
+var _river_mask: Dictionary[Vector2, Region] = {}
 var _rivers: Array[River] = []
 
 func _ready():
@@ -54,7 +55,8 @@ func _ready():
 	var ocean_id: Ocean_Identification = Ocean_Identification.new()
 	var beach_id: Beach_Identification = Beach_Identification.new()
 	var river_handler : River_Handler = River_Handler.new()
-
+	var global_ocean: Pool = Pool.new()
+	global_ocean.type = "Ocean"
 	
 	terrain_data = world_gen.generate_height_map(grid_width, grid_height, noise_seed, res_scale)
 	terrain_data = south_islands.apply_southern_islands(terrain_data, grid_width, grid_height, 150, 15, 60, noise_seed, res_scale)
@@ -62,12 +64,12 @@ func _ready():
 	Profiler.end("total terrain generation")
 	
 	## Check where the ocean abd the beach are
-	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height)
+	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height, global_ocean)
 	_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 5, res_scale)
 	
-	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, terrain_data, _ocean_mask, _beach_mask, _delta_mask, {}, noise_seed, res_scale)
+	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, terrain_data, global_ocean, _ocean_mask, _beach_mask, _delta_mask, _river_mask, {}, noise_seed, res_scale)
 	_rivers.append(main_river)
-	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, terrain_data, _ocean_mask, _beach_mask, _delta_mask, noise_seed, res_scale)
+	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, terrain_data, global_ocean, _ocean_mask, _beach_mask, _delta_mask, _river_mask, noise_seed, res_scale)
 	_rivers.append_array(minor_rivers)
 	update_map_visuals()
 	#save_map_to_png("res://image.png")
