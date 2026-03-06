@@ -40,7 +40,7 @@ func _ready():
 	reference_width = 400
 	#setup_buttons()
 	#add_fps_counter()
-	noise_seed = 663202794#randi()
+	noise_seed = randi() #663202794#
 	print("Noise seed is: %s" % noise_seed)
 	
 	var _rng: RandomNumberGenerator = RandomNumberGenerator.new()

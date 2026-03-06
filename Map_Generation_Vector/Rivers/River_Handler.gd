@@ -163,7 +163,7 @@ func get_random_river_direction(noise_seed : int) -> Vector2:
 	# PI = 180 degrees (Left)
 	# TAU = 360 degrees (Right)
 	# Values in between point Upwards (-Y)
-	var random_angle = rng.randf_range(0 + PI/4, PI - PI/4)
+	var random_angle = rng.randf_range(0 + PI/8, PI - PI/8)
 	
 	return Vector2.from_angle(random_angle)
 

@@ -10,8 +10,6 @@ var nations_in_culture : Array
 ### Sociatal Structure ###
 var social_equality : float # How much privelege the higher social classes have over the lower ones
 var social_mobility : float # How easy it is to move up in social class
-var social
+var social_conformity : float # How much people can argue with established social norm
 
 ### Thought ###
-var conformism : float # How much free thought is allowed
-var sexuality : float # How sexually liberated the society is

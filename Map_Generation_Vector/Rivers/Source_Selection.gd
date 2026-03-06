@@ -1,5 +1,18 @@
 class_name Source_Selection
 
+#func select_river_source(
+	#map_data: Dictionary, 
+	#ocean_mask: Dictionary, 
+	#width: int, 
+	#boundaries: Dictionary[String, int],
+	#noise_seed : int,
+	#elevation_power: float = 5.0,
+#) -> Vector2:
+	#var min_y: int = boundaries["min_y"]
+	#var max_y: int = boundaries["max_y"]
+	#var min_x: int = boundaries["min_x"]
+	#var max_x: int = boundaries["max_x"]
+
 # Selects a river source within a specific latitude band (Y-coordinates).
 # - min_y, max_y: The band limits on the map grid.
 # - elevation_power: Higher values make mountains exponentially more likely to be chosen.
@@ -7,12 +20,11 @@ func select_river_source(
 	map_data: Dictionary, 
 	ocean_mask: Dictionary, 
 	width: int, 
-	min_y: int, 
+	min_y: int,
 	max_y: int,
 	noise_seed : int,
 	elevation_power: float = 5.0,
 ) -> Vector2:
-	
 	var valid_cells = []
 	var total_weight: float = 0.0
 	
