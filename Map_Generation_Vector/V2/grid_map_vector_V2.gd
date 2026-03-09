@@ -26,21 +26,24 @@ var current_river_mode: RiverDisplayMode = RiverDisplayMode.NORMAL
 # Water_Display
 @export var water_level: float = 0.15 # Elevations below this are drawn as water
 
-
-
 # --- Data Holders ---
-var terrain_data: Dictionary[Vector2, float] = {} # Dictionary[Vector2, float]
-var _ocean_mask: Dictionary[Vector2, bool] = {} # Dictionary[Vector2, bool]
-var _beach_mask: Dictionary[Vector2, bool] = {} # Dictionary[Vector2, bool]
-var _delta_mask: Dictionary[Vector2, bool] = {} # Dictionary[Vector2, bool]
+var terrain_data: Dictionary[Vector2, float] = {}
+var _ocean_mask: Dictionary[Vector2, bool] = {} 
+var _beach_mask: Dictionary[Vector2, bool] = {} 
+var _delta_mask: Dictionary[Vector2, bool] = {} 
 var _river_mask: Dictionary[Vector2, Region] = {}
 var _rivers: Array[River] = []
 
+var mask_data: Dictionary[String, Dictionary] ={
+	"ocean": _ocean_mask,
+	"beach": _beach_mask,
+	"delta": _delta_mask,
+	"river": _river_mask,
+}
+
 func _ready():
 	reference_width = 400
-	#setup_buttons()
-	#add_fps_counter()
-	noise_seed = randi() #663202794#
+	noise_seed = 2603040091 #randi() #663202794#
 	print("Noise seed is: %s" % noise_seed)
 	
 	var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -64,15 +67,14 @@ func _ready():
 	Profiler.end("total terrain generation")
 	
 	## Check where the ocean abd the beach are
-	_ocean_mask = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height, global_ocean)
-	_beach_mask = beach_id.generate_beach_mask(_ocean_mask, 5, res_scale)
-	
-	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, terrain_data, global_ocean, _ocean_mask, _beach_mask, _delta_mask, _river_mask, {}, noise_seed, res_scale)
+	mask_data["ocean"] = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height, global_ocean)
+	mask_data["beach"] = beach_id.generate_beach_mask(mask_data["ocean"], 5, res_scale)
+	#
+	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, terrain_data, global_ocean, mask_data, {}, noise_seed, res_scale)
 	_rivers.append(main_river)
-	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, terrain_data, global_ocean, _ocean_mask, _beach_mask, _delta_mask, _river_mask, noise_seed, res_scale)
+	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, terrain_data, global_ocean, mask_data, noise_seed, res_scale)
 	_rivers.append_array(minor_rivers)
 	update_map_visuals()
-	#save_map_to_png("res://image.png")
 
 # Cache the texture so we don't regenerate it every frame
 var _map_texture: ImageTexture
@@ -82,15 +84,15 @@ func update_map_visuals():
 	var img = Image.create(grid_width, grid_height, false, Image.FORMAT_RGBA8)
 	
 	# --- 1. SET TERRAIN PIXELS ---
-	if not terrain_data.is_empty() and not _ocean_mask.is_empty():
+	if not terrain_data.is_empty() and not mask_data["ocean"].is_empty():
 		for pos in terrain_data:
 			if pos.x < 0 or pos.y < 0 or pos.x >= grid_width or pos.y >= grid_height:
 				continue
 			
 			var elevation = terrain_data[pos]
-			var is_ocean = _ocean_mask.get(pos, false)
+			var is_ocean = mask_data["ocean"].get(pos, false)
 			# Combine real beach mask and delta mask for the sandy look
-			var is_real_beach = _beach_mask.get(pos, false) or _delta_mask.get(pos, false)
+			var is_real_beach = mask_data["beach"].get(pos, false) or mask_data["delta"].get(pos, false)
 			
 			var color = _get_layered_color(elevation, is_ocean, is_real_beach)
 			img.set_pixel(int(pos.x), int(pos.y), color)
@@ -127,8 +129,6 @@ func update_map_visuals():
 									img.set_pixel(int(pos.x), int(pos.y), base_river_color)
 					else:
 						_draw_simple_river_path(img, river, base_river_color)
-
-	# *(Note: If you are still using the lake debug display from earlier, you can safely paste the DRAW LAKES block right here!)*
 
 	# 4. Create or Update the GPU Texture
 	if _map_texture:

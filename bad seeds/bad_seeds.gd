@@ -6,3 +6,5 @@ extends Node
 # 212594434 good seed actually
 # 663202794 lots of lowlands
 # 2011162729 weird spill into lowlands
+# 522123052 river connects to ocean
+# 2603040091 does not raise the lowlands

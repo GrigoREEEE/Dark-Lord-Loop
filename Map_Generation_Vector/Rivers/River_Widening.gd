@@ -14,7 +14,7 @@ func widen_river_iterative(
 	flow_increment: float, 
 	flood_cost_base: float = 1.0, 
 	flood_climb_cost: float = 5.0,
-	flood_distance_cost: float = 0.3,
+	flood_distance_cost: float = 0.5,
 	climb_tolerance: float = 0.01
 ):
 	
@@ -99,34 +99,31 @@ func widen_river_iterative(
 					var cost = 0.0
 					
 					# FREE FLOODING for lowlands (lakes/depressions)
-					if target_height <= 0.07:
-						cost = 0.0
-					else:
-						var effective_base = flood_cost_base
-						var effective_dist = flood_distance_cost
+					var effective_base = flood_cost_base
+					var effective_dist = flood_distance_cost
 						
-						# Lowland Discount (0.07 < h <= 0.12)
-						if target_height <= 0.12:
-							effective_base *= 0.8 
-							effective_dist *= 0.8
+					# Lowland Discount (0.07 < h <= 0.12)
+					if target_height <= 0.12:
+						effective_base *= 0.8 
+						effective_dist *= 0.8
 						
-						# Mouth Distance Discount
-						if is_mouth:
-							effective_dist *= 0.3
+					# Mouth Distance Discount
+					if is_mouth:
+						effective_dist *= 0.3
 						
-						cost = effective_base
+					cost = effective_base
 						
-						# Climb Cost
-						var height_diff = target_height - seg_data.bed_height
-						if height_diff > climb_tolerance:
-							cost += (height_diff - climb_tolerance) * flood_climb_cost
+					# Climb Cost
+					var height_diff = target_height - seg_data.bed_height
+					if height_diff > climb_tolerance:
+						cost += (height_diff - climb_tolerance) * flood_climb_cost
 						
-						# Distance Cost
-						var min_dist = 999.0
-						for core in seg_data.core_cells:
-							var d_val = core.distance_to(neighbor)
-							if d_val < min_dist: min_dist = d_val
-						cost += min_dist * effective_dist
+					# Distance Cost
+					var min_dist = 999.0
+					for core in seg_data.core_cells:
+						var d_val = core.distance_to(neighbor)
+						if d_val < min_dist: min_dist = d_val
+					cost += min_dist * effective_dist
 						
 					candidates.append({ "pos": neighbor, "cost": cost })
 					candidate_set[neighbor] = true

@@ -6,12 +6,12 @@ var mouth_segments: int = 3 #number of the original main river segments that get
 var to_merge: int = 0 #number of the main river segments we merge to form delta
 var bands_quantity: int = 5
 var delta_streams: Dictionary[int, int] = {3:1,2:1,1:1} #size and number of streams that form the delta
-var bands_rivers: Dictionary[int, int] = {0:3, 1:3, 2:3, 3:3, 4:3}
+var bands_rivers: Dictionary[int, int] = {0:0, 1:0, 2:0, 3:0, 4:0}
 var main_river_erosion: Dictionary[String, float] = {
 "start radius": 29.0,
-"end radius": 30.0,
+"end radius": 50.0,
 "start erosion": 0.85,
-"end erosion": 0.2
+"end erosion": 0.85
 }
 var side_river_erosion: Dictionary[String, float] = {
 "start radius": 5.0,
@@ -25,13 +25,11 @@ func handle_rivers(
 	map_height: int, 
 	terrain_data: Dictionary[Vector2, float], 
 	global_ocean : Pool,
-	_ocean_mask: Dictionary[Vector2, bool],
-	_beach_mask: Dictionary[Vector2, bool],
-	_delta_mask: Dictionary[Vector2, bool],
-	_river_mask: Dictionary[Vector2, Region],
+	mask_data: Dictionary[String, Dictionary],
 	noise_seed: int, 
-	res_scale: float):
-		
+	res_scale: float
+):
+	
 	var river_system : Array[River] = []
 	var bands_set: Array[Dictionary] = generate_map_bands(map_height, bands_quantity, 20 * res_scale)
 	var bands_keys: Array[int] = bands_rivers.keys()
@@ -42,7 +40,7 @@ func handle_rivers(
 			var selecte_noise: int = river_noises[i][(bands_rivers[i]-river_to_add)]
 			river_to_add -= 1
 			var band: Dictionary[String, int] = bands_set[i]
-			var river: River = setup_river("side", map_width, map_height, terrain_data, global_ocean, _ocean_mask, _beach_mask, _delta_mask, _river_mask, band, selecte_noise, res_scale)
+			var river: River = setup_river("side", map_width, map_height, terrain_data, global_ocean, mask_data, band, selecte_noise, res_scale)
 			river_system.append(river)
 	return river_system
 
@@ -52,10 +50,7 @@ func setup_river(
 	map_height: int, 
 	terrain_data: Dictionary[Vector2, float], 
 	global_ocean : Pool,
-	_ocean_mask: Dictionary[Vector2, bool],
-	_beach_mask: Dictionary[Vector2, bool],
-	_delta_mask: Dictionary[Vector2, bool],
-	_river_mask: Dictionary[Vector2, Region],
+	mask_data: Dictionary[String, Dictionary], 
 	band : Dictionary[String, int],
 	noise_seed: int, 
 	res_scale: float):
@@ -77,65 +72,62 @@ func setup_river(
 		river_start_pos = Vector2(map_width/2,0)
 		river_direction = Vector2.DOWN
 	else:
-		river_start_pos =  Source_Selector.select_river_source(terrain_data, _ocean_mask, map_width, band["start"], band["end"], noise_seed)
+		river_start_pos =  Source_Selector.select_river_source(terrain_data, mask_data["ocean"], map_width, band["start"], band["end"], noise_seed)
 		river_direction = get_random_river_direction((noise_seed + band["start"] + band["end"]))
-	#print("River Source is %s" % river_start_pos)
 
 	# --- IN-PLACE DICTIONARY UPDATES ---
 	var temp_ocean = ocean_id.ocean_vs_land(terrain_data, map_width, map_height, global_ocean)
-	_ocean_mask.clear()
-	_ocean_mask.merge(temp_ocean)
+	mask_data["ocean"].clear()
+	mask_data["ocean"].merge(temp_ocean)
 	
-	var temp_beach = beach_id.generate_beach_mask(_ocean_mask, 5, res_scale)
-	_beach_mask.clear()
-	_beach_mask.merge(temp_beach)
+	var temp_beach = beach_id.generate_beach_mask(mask_data["ocean"], 5, res_scale)
+	mask_data["beach"].clear()
+	mask_data["beach"].merge(temp_beach)
 	
 	
 	## Generate the River
-	my_river = river_gen.generate_natural_river(map_width, map_height, global_ocean, _river_mask, noise_seed, river_start_pos, river_direction, res_scale)
-	if check_river_breach(my_river, _beach_mask, mouth_segments):
-		print("River touches beach!")
+	my_river = river_gen.generate_natural_river(map_width, map_height, global_ocean, mask_data["river"], noise_seed, river_start_pos, river_direction, res_scale)
+	if check_river_breach(my_river, mask_data["beach"], mouth_segments):
 		noise_seed = randi()
 		print("New river noise seed is: %s" % noise_seed)
-		return setup_river(type, map_width, map_height, terrain_data, global_ocean, _ocean_mask, _beach_mask, _delta_mask, _river_mask, band, noise_seed, res_scale)
+		return setup_river(type, map_width, map_height, terrain_data, global_ocean, mask_data, band, noise_seed, res_scale)
 	else:
 		Profiler.start("Erosion")
 		## Apply Erosion
 		if type == "main":
-			erosion.apply_river_erosion(terrain_data, my_river, main_river_erosion, res_scale) #5, 30, 0.9, 0.1)
+			#erosion.apply_river_erosion(terrain_data, my_river, main_river_erosion, res_scale) #5, 30, 0.9, 0.1)
+			var msk = erosion.generate_river_valley_mask(my_river.river_path, main_river_erosion["start radius"], main_river_erosion["end radius"])
+			erosion.apply_target_height_erosion(terrain_data, msk, 0.2, main_river_erosion)
 		else:
 			erosion.apply_river_erosion(terrain_data, my_river, side_river_erosion, res_scale) #5, 30, 0.9, 0.1)
 		Profiler.end("Erosion")
 		## Check where the ocean is again (due to erosion)
-		_ocean_mask = ocean_id.ocean_vs_land(terrain_data, map_width, map_height, global_ocean)
+		mask_data["ocean"] = ocean_id.ocean_vs_land(terrain_data, map_width, map_height, global_ocean)
 		## Remove the river from the ocean
-		river_gen.clean_river_path(my_river, _ocean_mask)
+		river_gen.clean_river_path(my_river, mask_data["ocean"])
 		## Break the river into segments
 		my_river.create_segments(10 * res_scale)
 		if type == "main":
-			print("enter main!")
 			to_merge = my_river.resegment_delta(mouth_segments, 1 * res_scale) + 1
 			
 			## Expand the river
-			river_expander.widen_river_iterative(terrain_data, my_river, _ocean_mask, mouth_segments, 20.0 * res_scale, 1.0 * res_scale)
+			river_expander.widen_river_iterative(terrain_data, my_river, mask_data["ocean"], mouth_segments, 20.0 * res_scale, 1.0 * res_scale)
 			river_expander.merge_segments(my_river, to_merge)
 			# --- IN-PLACE DICTIONARY UPDATE ---
 			var temp_delta = delta_maker.create_delta_mask2(my_river)
-			_delta_mask.clear()
-			_delta_mask.merge(temp_delta)
+			mask_data["delta"].clear()
+			mask_data["delta"].merge(temp_delta)
 			## Make the delta
-			delta_maker.generate_delta(my_river, _ocean_mask, delta_streams, noise_seed)
-			delta_maker.naturalize_delta_islands(terrain_data, my_river, _delta_mask)
-			delta_maker.erode_delta_edges(terrain_data, _delta_mask, noise_seed)
+			delta_maker.generate_delta(my_river, mask_data["ocean"], delta_streams, noise_seed)
+			delta_maker.naturalize_delta_islands(terrain_data, my_river, mask_data["delta"])
+			delta_maker.erode_delta_edges(terrain_data, mask_data["delta"], noise_seed)
 			# --- IN-PLACE DICTIONARY UPDATE ---
 			temp_delta = delta_maker.create_delta_mask2(my_river,3)
-			_delta_mask.clear()
-			_delta_mask.merge(temp_delta)
+			mask_data["delta"].clear()
+			mask_data["delta"].merge(temp_delta)
 		
 		Profiler.end("total river generation")
-		print(my_river)
-		print(_river_mask)
-		add_river_regions_to_system_mask(my_river, _river_mask)
+		add_river_regions_to_system_mask(my_river, mask_data["river"])
 		return my_river
 
 
