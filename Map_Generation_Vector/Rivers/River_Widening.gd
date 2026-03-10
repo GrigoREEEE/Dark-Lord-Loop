@@ -14,7 +14,7 @@ func widen_river_iterative(
 	flow_increment: float, 
 	flood_cost_base: float = 1.0, 
 	flood_climb_cost: float = 5.0,
-	flood_distance_cost: float = 0.5,
+	flood_distance_cost: float = 0.3,
 	climb_tolerance: float = 0.01
 ):
 	
@@ -109,7 +109,8 @@ func widen_river_iterative(
 						
 					# Mouth Distance Discount
 					if is_mouth:
-						effective_dist *= 0.3
+						effective_dist *= 0.05
+						effective_base *= 0.01
 						
 					cost = effective_base
 						
