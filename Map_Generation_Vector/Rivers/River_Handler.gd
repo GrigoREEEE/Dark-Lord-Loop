@@ -2,11 +2,11 @@ extends Node
 
 class_name River_Handler
 
-var mouth_segments: int = 4 #number of the original main river segments that get the mouth bonus
+var mouth_segments: int = 3 #number of the original main river segments that get the mouth bonus
 var to_merge: int = 0 #number of the main river segments we merge to form delta
 var bands_quantity: int = 5
 var delta_streams: Dictionary[int, int] = {3:1,2:1,1:1} #size and number of streams that form the delta
-var bands_rivers: Dictionary[int, int] = {0:0, 1:0, 2:0, 3:0, 4:0}
+var bands_rivers: Dictionary[int, int] = {0:1, 1:1, 2:1, 3:1, 4:1}
 var main_river_erosion: Dictionary[String, float] = {
 "start radius": 29.0,
 "end radius": 50.0,
@@ -31,7 +31,7 @@ func handle_rivers(
 ):
 	
 	var river_system : Array[River] = []
-	var bands_set: Array[Dictionary] = generate_map_bands(map_height, bands_quantity, 20 * res_scale)
+	var cells_set: Array[Dictionary] = generate_map_grid(map_width, map_height, 3, 5, 20 * res_scale)
 	var bands_keys: Array[int] = bands_rivers.keys()
 	var river_noises: Dictionary[int, Array] = calculate_river_noises(noise_seed)
 	for i in bands_keys:
@@ -39,8 +39,8 @@ func handle_rivers(
 		while river_to_add > 0:
 			var selecte_noise: int = river_noises[i][(bands_rivers[i]-river_to_add)]
 			river_to_add -= 1
-			var band: Dictionary[String, int] = bands_set[i]
-			var river: River = setup_river("side", map_width, map_height, terrain_data, global_ocean, mask_data, band, selecte_noise, res_scale)
+			var cell: Dictionary[String, int] = cells_set[i]
+			var river: River = setup_river("side", map_width, map_height, terrain_data, global_ocean, mask_data, cell, selecte_noise, res_scale)
 			river_system.append(river)
 	return river_system
 
@@ -51,7 +51,7 @@ func setup_river(
 	terrain_data: Dictionary[Vector2, float], 
 	global_ocean : Pool,
 	mask_data: Dictionary[String, Dictionary], 
-	band : Dictionary[String, int],
+	cell : Dictionary[String, int],
 	noise_seed: int, 
 	res_scale: float):
 	
@@ -72,19 +72,20 @@ func setup_river(
 		river_start_pos = Vector2(map_width/2,0)
 		river_direction = Vector2.DOWN
 	else:
-		river_start_pos =  Source_Selector.select_river_source(terrain_data, mask_data["ocean"], map_width, band["start"], band["end"], noise_seed)
-		river_direction = get_random_river_direction((noise_seed + band["start"] + band["end"]))
+		river_start_pos =  Source_Selector.select_river_source(terrain_data, mask_data["ocean"], cell, noise_seed)
+		river_direction = get_random_river_direction((noise_seed + cell["start_y"] + cell["end_y"]))
 	Profiler.end("River Point Selection")
 	# --- IN-PLACE DICTIONARY UPDATES ---
-	Profiler.start("Mask Making")
+	Profiler.start("Ocean Mask Making")
 	var temp_ocean = ocean_id.ocean_vs_land(terrain_data, map_width, map_height, global_ocean)
 	mask_data["ocean"].clear()
 	mask_data["ocean"].merge(temp_ocean)
-	
-	var temp_beach = beach_id.generate_beach_mask(mask_data["ocean"], 5, res_scale)
+	Profiler.end("Ocean Mask Making")
+	Profiler.start("Beach Mask Making")
+	var temp_beach = beach_id.generate_beach_mask(mask_data["ocean"], map_width, map_height, 5, res_scale)
 	mask_data["beach"].clear()
 	mask_data["beach"].merge(temp_beach)
-	Profiler.end("Mask Making")
+	Profiler.end("Beach Mask Making")
 	
 	
 	## Generate the River
@@ -95,7 +96,7 @@ func setup_river(
 	if check_river_breach(my_river, mask_data["beach"], mouth_segments):
 		noise_seed = randi()
 		print("New river noise seed is: %s" % noise_seed)
-		return setup_river(type, map_width, map_height, terrain_data, global_ocean, mask_data, band, noise_seed, res_scale)
+		return setup_river(type, map_width, map_height, terrain_data, global_ocean, mask_data, cell, noise_seed, res_scale)
 	else:
 		Profiler.end("River Breach Check")
 		Profiler.start("Erosion")
@@ -175,45 +176,65 @@ func get_random_river_direction(noise_seed : int) -> Vector2:
 	
 	return Vector2.from_angle(random_angle)
 
-# Splits the map into N sequential bands, skipping a specified number of pixels at the top.
-func generate_map_bands(map_length: int, num_bands: int, top_padding: int = 0) -> Array[Dictionary]:
-	var bands: Array[Dictionary] = []
+# Splits the map into a 2D grid of rows and columns, skipping a specified number of pixels at the top.
+# Returns an Array of Dictionaries, each containing start_x, end_x, start_y, and end_y.
+func generate_map_grid(
+	map_width: int, 
+	map_height: int, 
+	columns: int, 
+	rows: int, 
+	top_padding: int = 0
+) -> Array[Dictionary]:
 	
-	if num_bands <= 0 or map_length <= 0:
-		return bands
-		
-	# 1. Calculate the actual space available for bands
-	var effective_length : int = map_length - top_padding
+	var grid: Array[Dictionary] = []
 	
-	# Safety check: if padding is larger than the map itself, no bands can be generated
-	if effective_length <= 0:
-		return bands
+	if columns <= 0 or rows <= 0 or map_width <= 0 or map_height <= 0:
+		return grid
 		
-	# Prevent creating more bands than there are available pixels
-	num_bands = min(num_bands, effective_length)
+	# --- 1. Y-AXIS (ROWS) CALCULATIONS ---
+	var effective_height: int = map_height - top_padding
+	if effective_height <= 0:
+		return grid # Padding consumed the entire map
+		
+	rows = min(rows, effective_height) # Prevent more rows than available pixels
 	
-	# 2. Divide the effective space
-	var base_size : int = effective_length / num_bands
-	var remainder : int = effective_length % num_bands
+	var base_h: int = effective_height / rows
+	var rem_h: int = effective_height % rows
 	
-	# 3. Start generating after the padding
-	var current_start : int = top_padding
+	var row_bounds: Array[Dictionary] = []
+	var current_y: int = top_padding
 	
-	for i in range(num_bands):
-		var band_size: int = base_size
-		
-		# Distribute the remainder 1 pixel at a time to the first few bands
-		if remainder > 0:
-			band_size += 1
-			remainder -= 1
-			
-		var current_end : int = current_start + band_size - 1
-		var band : Dictionary[String, int] = {"start": current_start, "end": current_end}
-		bands.append(band)
-		
-		current_start = current_end + 1
-		
-	return bands
+	for r in range(rows):
+		var h: int = base_h + (1 if r < rem_h else 0)
+		row_bounds.append({"start": current_y, "end": current_y + h - 1})
+		current_y += h
+
+	# --- 2. X-AXIS (COLUMNS) CALCULATIONS ---
+	columns = min(columns, map_width) # Prevent more columns than available pixels
+	
+	var base_w: int = map_width / columns
+	var rem_w: int = map_width % columns
+	
+	var col_bounds: Array[Dictionary] = []
+	var current_x: int = 0
+	
+	for c in range(columns):
+		var w: int = base_w + (1 if c < rem_w else 0)
+		col_bounds.append({"start": current_x, "end": current_x + w - 1})
+		current_x += w
+
+	# --- 3. COMBINE INTO GRID CELLS ---
+	for r_bound in row_bounds:
+		for c_bound in col_bounds:
+			var to_append: Dictionary[String, int] = {
+				"start_x": c_bound["start"],
+				"end_x": c_bound["end"],
+				"start_y": r_bound["start"],
+				"end_y": r_bound["end"]
+			}
+			grid.append(to_append)
+	print(grid)
+	return grid
 
 func calculate_river_noises(noise_seed: int) -> Dictionary[int, Array]:
 	var result: Dictionary[int, Array] = {}

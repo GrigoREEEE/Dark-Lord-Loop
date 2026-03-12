@@ -8,7 +8,7 @@ class_name Ocean_Identification
 
 # Returns a Dictionary where Key = Vector2(x,y) and Value = bool (True if Ocean, False if Land/Inland)
 # Also populates the passed-in ocean_pool's all_cells array.
-func ocean_vs_land(
+func ocean_vs_land2(
 	map_data: Dictionary, 
 	width: int, 
 	height: int, 
@@ -72,3 +72,61 @@ func _check_ocean_seed(
 			ocean_map[pos] = true
 			ocean_pool.all_cells.append(pos)
 			queue.append(pos)
+			
+########################################
+######## Water Identification ##########
+########################################
+
+# Returns a Dictionary where Key = Vector2(x,y) and Value = true (Only contains Ocean cells)
+# Also populates the passed-in ocean_pool's all_cells array.
+func ocean_vs_land(
+	map_data: Dictionary, 
+	width: int, 
+	height: int, 
+	ocean_pool: Pool, 
+	water_level: float = 0.15
+) -> Dictionary[Vector2, bool]:
+	
+	var is_ocean_map: Dictionary[Vector2, bool] = {}
+	var open_set: Array[Vector2] = [] 
+	
+	# --- OPTIMIZATION 1: SINGLE SEED ---
+	# Since the ocean is guaranteed to be united, we only need to drop one "bucket of paint"
+	# at the absolute bottom-right corner of the map grid.
+	var seed_pos := Vector2(width - 1, height - 1)
+	
+	# Verify the seed is actually underwater just to be safe
+	if map_data.get(seed_pos, 999.0) < water_level:
+		is_ocean_map[seed_pos] = true
+		ocean_pool.all_cells.append(seed_pos)
+		open_set.append(seed_pos)
+	else:
+		push_warning("Ocean seed point is not underwater! Check your terrain generation.")
+
+	# --- OPTIMIZATION 2: 4-WAY FLOOD FILL ---
+	# Cuts the loop iterations exactly in half compared to 8-way.
+	var directions: Array[Vector2] = [
+		Vector2(0, 1), Vector2(0, -1), Vector2(1, 0), Vector2(-1, 0)
+	]
+	
+	# --- STEP 3: EXECUTE FLOOD FILL ---
+	while open_set.size() > 0:
+		var current: Vector2 = open_set.pop_back()
+		
+		for d in directions:
+			var neighbor: Vector2 = current + d
+			
+			# If we already marked it as ocean, skip it instantly.
+			# Because we use a Sparse Dictionary, we only check .has()
+			if is_ocean_map.has(neighbor):
+				continue
+				
+			# --- OPTIMIZATION 3: COMBINED LOOKUP ---
+			# We use .get(neighbor, 999.0). If the neighbor is out of bounds or missing 
+			# from map_data, it returns 999.0 (a mountain), which fails the < water_level check automatically.
+			if map_data.get(neighbor, 999.0) < water_level:
+				is_ocean_map[neighbor] = true
+				ocean_pool.all_cells.append(neighbor)
+				open_set.append(neighbor)
+					
+	return is_ocean_map

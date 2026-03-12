@@ -43,7 +43,7 @@ var mask_data: Dictionary[String, Dictionary] ={
 
 func _ready():
 	reference_width = 400
-	noise_seed = randi() #663202794#
+	noise_seed = 663202794 #randi() #663202794#
 	print("Noise seed is: %s" % noise_seed)
 	
 	var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -68,7 +68,7 @@ func _ready():
 	
 	## Check where the ocean abd the beach are
 	mask_data["ocean"] = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height, global_ocean)
-	mask_data["beach"] = beach_id.generate_beach_mask(mask_data["ocean"], 5, res_scale)
+	mask_data["beach"] = beach_id.generate_beach_mask(mask_data["ocean"], grid_width, grid_height, 5, res_scale)
 	#
 	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, terrain_data, global_ocean, mask_data, {}, noise_seed, res_scale)
 	_rivers.append(main_river)
