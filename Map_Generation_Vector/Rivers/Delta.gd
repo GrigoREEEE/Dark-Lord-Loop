@@ -109,9 +109,6 @@ func generate_delta(
 
 
 # Generates a stream that flows until it hits the ocean.
-# - Ignores other streams (can cross over).
-# - Strictly constrained to 'boundary' set.
-# - Uses momentum + noise for natural curves.
 func _generate_smart_stream(
 	sources: Array, # Array of Vector2
 	flow_dir: Vector2, 
@@ -129,10 +126,9 @@ func _generate_smart_stream(
 	# SETUP NOISE
 	var noise = FastNoiseLite.new()
 	noise.seed = rng.randi()
-	noise.frequency = 0.04 # Low frequency for wide, lazy meanders
+	noise.frequency = 0.04 # Low frequency for wide
 	
 	# 1. INITIALIZATION
-	# Safely cast the starting node to Vector2
 	var start_node: Vector2 = sources[rng.randi() % sources.size()]
 	var pos_f: Vector2 = start_node 
 	var velocity: Vector2 = flow_dir.normalized()

@@ -43,14 +43,14 @@ var mask_data: Dictionary[String, Dictionary] ={
 
 func _ready():
 	reference_width = 400
-	noise_seed = 663202794 #randi() #663202794#
+	noise_seed = 58196215 #randi() #663202794#
 	print("Noise seed is: %s" % noise_seed)
 	
 	var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	var _winding_noise: FastNoiseLite = FastNoiseLite.new()
 	
 	var res_scale = int(grid_width/reference_width)
-	Profiler.start("total terrain generation")
+	#Profiler.start("total terrain generation")
 	
 	var world_gen: Terrain_Generator = Terrain_Generator.new()
 	var south_islands: South_Islands = South_Islands.new()
@@ -64,12 +64,12 @@ func _ready():
 	terrain_data = world_gen.generate_height_map(grid_width, grid_height, noise_seed, res_scale)
 	terrain_data = south_islands.apply_southern_islands(terrain_data, grid_width, grid_height, 150, 15, 60, noise_seed, res_scale)
 	terrain_data = ice_wall.apply_ice_wall(terrain_data, grid_width, noise_seed, res_scale)
-	Profiler.end("total terrain generation")
+	#Profiler.end("total terrain generation")
 	
-	## Check where the ocean abd the beach are
+	# Check where the ocean abd the beach are
 	mask_data["ocean"] = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height, global_ocean)
 	mask_data["beach"] = beach_id.generate_beach_mask(mask_data["ocean"], grid_width, grid_height, 5, res_scale)
-	#
+	
 	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, terrain_data, global_ocean, mask_data, {}, noise_seed, res_scale)
 	_rivers.append(main_river)
 	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, terrain_data, global_ocean, mask_data, noise_seed, res_scale)

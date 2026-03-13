@@ -56,7 +56,7 @@ func generate_natural_river(
 	# --- 3. FLOW LOOP ---
 	while step_count < max_steps:
 		step_count += 1
-		
+		#gravity_strength -= 0.001
 		# --- A. BASE MOVEMENT (Noise + Gravity) ---
 		# Get noise value (-1.0 to 1.0)
 		var noise_val = noise.get_noise_2d(step_count * 0.5, 0.0)
