@@ -27,12 +27,9 @@ func generate_natural_river(
 	noise.seed = noise_seed
 	noise.frequency = 0.01 / res_scale 
 	
-	var gravity_strength: float = 0.35
+	var gravity_strength: float = 0.2
 	var steer_strength: float = 0.5 
-	
-	# Sensor Config
-	var sensor_reach: float = 15.0 
-	var repulsion_strength: float = 0.8 
+	var noise_cursor: float = 0.0
 
 	# --- 2. INITIALIZATION ---
 	river.source = start_pos
@@ -56,10 +53,21 @@ func generate_natural_river(
 	# --- 3. FLOW LOOP ---
 	while step_count < max_steps:
 		step_count += 1
-		#gravity_strength -= 0.001
-		# --- A. BASE MOVEMENT (Noise + Gravity) ---
-		# Get noise value (-1.0 to 1.0)
-		var noise_val = noise.get_noise_2d(step_count * 0.5, 0.0)
+		
+		# --- A. PROGRESSIVE MEANDERING ---
+		# Create a progress factor from 0.0 to 1.0. 
+		# (Adjust 400.0 to change how long it takes to reach maximum meandering)
+		var progress: float = clamp(float(step_count) / 1000.0, 0.0, 1.0)
+		
+		# Dynamically change the noise step size!
+		# Starts smooth and straight (0.1), ends chaotic and jagged (1.2)
+		var current_step_size: float = lerp(0.1, 1.2, progress)
+		
+		# Safely advance the cursor
+		noise_cursor += current_step_size
+		
+		# Get noise value (-1.0 to 1.0) using the cursor instead of step_count
+		var noise_val = noise.get_noise_2d(noise_cursor, 0.0)
 		
 		# Calculate the noise steering vector relative to our target direction
 		var desired_angle = noise_val * PI # -180 to 180 degrees

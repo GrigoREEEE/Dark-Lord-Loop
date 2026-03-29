@@ -53,7 +53,7 @@ func apply_target_height_erosion(
 		# --- FACTOR 2: HEIGHT DIFFERENCE ---
 		# Positive value = terrain is too low (needs dirt / sedimentation)
 		# Negative value = terrain is too high (needs carving / erosion)
-		var height_diff: float = target_height - current_h
+		var height_diff: float = (target_height - current_h)
 		
 		# --- APPLY THE CHANGE ---
 		# The total change is proportional to the height difference, 
@@ -62,15 +62,15 @@ func apply_target_height_erosion(
 		
 		map_data[cell] = current_h + total_change
 		
-# Generates a perfect erosion mask expanding outward from the river.
-# Returns a Dictionary where Key = Vector2 (the cell), 
-# and Value = Dictionary containing {"dist": float, "progress": float}
+## Generates a perfect erosion mask expanding outward from the river.
+# - stop_cells_from_end: Prevents the valley from expanding outward for the last N cells of the river.
 func generate_river_valley_mask(
 	river_path: Array[Vector2], 
 	start_radius: float, 
-	end_radius: float
+	end_radius: float,
+	stop_cells_from_end: int = 0
 ) -> Dictionary:
-	Profiler.start("Erosion Mask Generation")
+	
 	var mask: Dictionary = {}
 	var queue: Array[Dictionary] = []
 	var path_len: int = river_path.size()
@@ -78,17 +78,22 @@ func generate_river_valley_mask(
 	if path_len == 0:
 		return mask
 		
+	# Determine the cutoff point for expansion
+	var effective_len: int = path_len - stop_cells_from_end
+		
 	# --- 1. SEED THE MULTI-SOURCE BFS ---
 	for i in range(path_len):
 		var pos: Vector2 = river_path[i]
 		# Calculate how far along the river this point is (0.0 to 1.0)
 		var prog: float = float(i) / float(max(1, path_len - 1))
 		
-		# Record it in the mask. Distance is 0 because it IS the river.
+		# Record the core river cell in the mask. 
 		mask[pos] = {"dist": 0.0, "progress": prog}
 		
-		# Add to the expansion queue. We track 'origin' to calculate perfect circular distances.
-		queue.append({"pos": pos, "origin": pos, "progress": prog})
+		# ONLY add to the expansion queue if it is before the cutoff point.
+		# This stops the valley from widening at the river's mouth.
+		if i < effective_len:
+			queue.append({"pos": pos, "origin": pos, "progress": prog})
 
 	# --- 2. BFS EXPANSION ---
 	var directions: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
@@ -120,6 +125,6 @@ func generate_river_valley_mask(
 					
 					# Queue the neighbor so the flood fill continues outward
 					queue.append({"pos": neighbor, "origin": origin, "progress": c_prog})
-	Profiler.start("Erosion Mask Generation")
+					
 	return mask
 	

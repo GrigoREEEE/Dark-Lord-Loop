@@ -2,6 +2,8 @@ extends Node
 
 class_name Delta
 
+
+
 func generate_delta(
 	river: River, 
 	ocean_mask: Dictionary,
@@ -115,7 +117,7 @@ func _generate_smart_stream(
 	boundary: Dictionary, 
 	ocean_mask: Dictionary,
 	noise_seed: int = 0
-) -> Array[Vector2]:
+	) -> Array[Vector2]:
 	
 	var rng = RandomNumberGenerator.new()
 	if noise_seed != 0: 
@@ -199,7 +201,11 @@ func _generate_smart_stream(
 
 # Helper to deterministically extract the outer edges of the delta shape.
 # Returns an Array containing two paths: [left_edge_path, right_edge_path]
-func _extract_delta_edge_paths(boundary_set: Dictionary, sources: Array, flow_dir: Vector2) -> Array:
+func _extract_delta_edge_paths(
+	boundary_set: Dictionary, 
+	sources: Array, 
+	flow_dir: Vector2
+	) -> Array:
 	var edge_cells: Array[Vector2] = []
 	var directions: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
 	
@@ -256,32 +262,14 @@ func _extract_delta_edge_paths(boundary_set: Dictionary, sources: Array, flow_di
 	
 	return [left_path, right_path]
 
-# Creates a full-world boolean mask for the Delta.
-# - Keys: Vector2 coordinates for every tile in the map.
-# - Values: TRUE if the tile is part of the last river segment, FALSE otherwise.
-func create_delta_mask(river: River, width: int, height: int) -> Dictionary:
-	var mask = {}
-	
-	# 1. Initialize the entire world to FALSE
-	for x in range(width):
-		for y in range(height):
-			mask[Vector2(x, y)] = false
-			
-	# 2. Paint the Delta cells to TRUE
-	if not river.segments.is_empty():
-		var delta_segment = river.segments[-1]
-		
-		for cell in delta_segment:
-			# Safety check to ensure we don't write out of bounds
-			if cell.x >= 0 and cell.x < width and cell.y >= 0 and cell.y < height:
-				mask[cell] = true
-				
-	return mask
 	
 # Creates a boolean mask (Dictionary) where every cell in the delta is TRUE.
 # - spread_radius: Expands the mask outward by N cells.
 # Returns an empty dictionary if the river has no segments.
-func create_delta_mask2(river: River, spread_radius: int = 0) -> Dictionary[Vector2, bool]:
+func create_delta_mask2(
+	river: River, 
+	spread_radius: int = 0
+	) -> Dictionary[Vector2, bool]:
 	var mask: Dictionary[Vector2, bool] = {}
 	
 	if river.segments.is_empty():
@@ -322,7 +310,10 @@ func create_delta_mask2(river: River, spread_radius: int = 0) -> Dictionary[Vect
 # - Islands are defined as (Delta Mask - River Water).
 # - Elevation is calculated based on distance from the water edge.
 # - Height ranges from 0.12 (edge) to 0.25 (center).
-func naturalize_delta_islands(map_data: Dictionary, river: River, delta_mask: Dictionary):
+func naturalize_delta_islands(
+	map_data: Dictionary, 
+	river: River, delta_mask: Dictionary
+	):
 	if river.segments.is_empty(): return
 
 	# 1. IDENTIFY "RAW" ISLAND CELLS
@@ -442,7 +433,7 @@ func erode_delta_edges(
 	erosion_radius: int = 4, 
 	erosion_strength: float = 0.2,
 	min_height: float = 0.15
-):
+	):
 	if delta_mask.is_empty(): return
 
 	# Setup Noise for organic unevenness

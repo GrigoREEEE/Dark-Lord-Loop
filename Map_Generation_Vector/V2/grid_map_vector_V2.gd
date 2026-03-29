@@ -43,7 +43,7 @@ var mask_data: Dictionary[String, Dictionary] ={
 
 func _ready():
 	reference_width = 400
-	noise_seed = 58196215 #randi() #663202794#
+	noise_seed = randi() # 177024239 #randi() #58196215 #randi() #663202794#
 	print("Noise seed is: %s" % noise_seed)
 	
 	var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
