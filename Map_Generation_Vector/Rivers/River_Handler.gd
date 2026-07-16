@@ -5,8 +5,9 @@ class_name River_Handler
 var mouth_segments: int = 3 #number of the original main river segments that get the mouth bonus
 var to_merge: int = 0 #number of the main river segments we merge to form delta
 var bands_quantity: int = 5
+var chunk_size: int = 7
 var delta_streams: Dictionary[int, int] = {3:1,2:2,1:2} #size and number of streams that form the delta
-var bands_rivers: Dictionary[int, int] = {0:0, 1:0, 2:0, 3:0, 4:0}
+var bands_rivers: Dictionary[int, int] = {0:1, 1:1, 2:1, 3:1, 4:1}
 var main_river_erosion: Dictionary[String, float] = {
 "start radius": 80.0,
 "end radius": 50.0,
@@ -23,7 +24,7 @@ var side_river_erosion: Dictionary[String, float] = {
 func handle_rivers(
 	map_width: int,
 	map_height: int, 
-	terrain_data: Dictionary[Vector2, float], 
+	map_data: Dictionary[String, Dictionary], 
 	global_ocean : Pool,
 	mask_data: Dictionary[String, Dictionary],
 	noise_seed: int, 
@@ -32,15 +33,17 @@ func handle_rivers(
 	
 	var river_system : Array[River] = []
 	var cells_set: Array[Dictionary] = generate_map_grid(map_width, map_height, 3, 5, 20 * res_scale)
+	
 	var bands_keys: Array[int] = bands_rivers.keys()
 	var river_noises: Dictionary[int, Array] = calculate_river_noises(noise_seed)
 	for i in bands_keys:
-		var river_to_add : int = bands_rivers[i] # number of rivers we need to add per band
+		var river_to_add : int = bands_rivers[i] 
 		while river_to_add > 0:
 			var selecte_noise: int = river_noises[i][(bands_rivers[i]-river_to_add)]
 			river_to_add -= 1
 			var cell: Dictionary[String, int] = cells_set[i]
-			var river: River = setup_river("side", map_width, map_height, terrain_data, global_ocean, mask_data, cell, selecte_noise, res_scale)
+			# Pass map_data instead of terrain_data
+			var river: River = setup_river("side", map_width, map_height, map_data, global_ocean, mask_data, cell, selecte_noise, res_scale)
 			river_system.append(river)
 	return river_system
 
@@ -48,7 +51,7 @@ func setup_river(
 	type: String,
 	map_width: int,
 	map_height: int, 
-	terrain_data: Dictionary[Vector2, float], 
+	map_data: Dictionary[String, Dictionary], 
 	global_ocean : Pool,
 	mask_data: Dictionary[String, Dictionary], 
 	cell : Dictionary[String, int],
@@ -72,37 +75,41 @@ func setup_river(
 		river_start_pos = Vector2(map_width/2,0)
 		river_direction = Vector2.DOWN
 	else:
-		river_start_pos =  Source_Selector.select_river_source(terrain_data, mask_data["ocean"], cell, noise_seed)
+		# Route to map_data["terrain"]
+		river_start_pos =  Source_Selector.select_river_source(map_data["terrain"], mask_data["ocean"], cell, noise_seed)
 		river_direction = get_random_river_direction((noise_seed + cell["start_y"] + cell["end_y"]))
 	Profiler.end("River Point & Direction Selection")
 	
 	
-	
 	## Generate the River
 	Profiler.start("River Path Generation")
-	my_river = river_gen.generate_natural_river(map_width, map_height, global_ocean, mask_data["river"], noise_seed, river_start_pos, river_direction, res_scale)
+	# Pass map_data["river"] instead of mask_data["river"]
+	my_river = river_gen.generate_natural_river(map_width, map_height, global_ocean, map_data["river"], noise_seed, river_start_pos, river_direction, res_scale)
 	Profiler.end("River Path Generation")
 	Profiler.start("River Breach Check")
 	if check_river_breach(my_river, mask_data["beach"], mouth_segments):
 		Profiler.end("River Breach Check")
 		noise_seed = randi()
 		print("New river noise seed is: %s" % noise_seed)
-		return setup_river(type, map_width, map_height, terrain_data, global_ocean, mask_data, cell, noise_seed, res_scale)
+		# Pass map_data
+		return setup_river(type, map_width, map_height, map_data, global_ocean, mask_data, cell, noise_seed, res_scale)
 	else:
 		Profiler.end("River Breach Check")
 		Profiler.start("Erosion")
 		## Apply Erosion
 		if type == "main":
-			#erosion.apply_river_erosion(terrain_data, my_river, main_river_erosion, res_scale) #5, 30, 0.9, 0.1)
 			var msk = erosion.generate_river_valley_mask(my_river.river_path, main_river_erosion["start radius"], main_river_erosion["end radius"], 20 * res_scale)
-			erosion.apply_target_height_erosion(terrain_data, msk, mask_data["ocean"], 0.2, main_river_erosion)
+			# Route to map_data["terrain"]
+			erosion.apply_target_height_erosion(map_data["terrain"], msk, mask_data["ocean"], 0.2, main_river_erosion)
 		else:
 			var msk = erosion.generate_river_valley_mask(my_river.river_path, side_river_erosion["start radius"], side_river_erosion["end radius"], 20 * res_scale)
-			erosion.apply_target_height_erosion(terrain_data, msk, mask_data["ocean"], 0.2, side_river_erosion)
+			# Route to map_data["terrain"]
+			erosion.apply_target_height_erosion(map_data["terrain"], msk, mask_data["ocean"], 0.2, side_river_erosion)
 		Profiler.end("Erosion")
 		# --- IN-PLACE DICTIONARY UPDATES ---
 		Profiler.start("Ocean Mask Making")
-		var temp_ocean = ocean_id.ocean_vs_land(terrain_data, map_width, map_height, global_ocean)
+		# Route to map_data["terrain"]
+		var temp_ocean = ocean_id.ocean_vs_land(map_data["terrain"], map_width, map_height, global_ocean)
 		mask_data["ocean"].clear()
 		mask_data["ocean"].merge(temp_ocean)
 		Profiler.end("Ocean Mask Making")
@@ -125,7 +132,8 @@ func setup_river(
 			Profiler.end("River Delta Resegment")
 			## Expand the river
 			Profiler.start("River Expanding")
-			river_expander.widen_river_iterative(terrain_data, my_river, mask_data["ocean"], mouth_segments, 20.0 * res_scale, 1.0 * res_scale)
+			# Route to map_data["terrain"]
+			river_expander.widen_river_iterative(map_data["terrain"], my_river, mask_data["ocean"], mouth_segments, 20.0 * res_scale, 1.0 * res_scale)
 			Profiler.end("River Expanding")
 			Profiler.start("River merge")
 			river_expander.merge_segments(my_river, to_merge)
@@ -137,8 +145,9 @@ func setup_river(
 			mask_data["delta"].merge(temp_delta)
 			### Make the delta
 			delta_maker.generate_delta(my_river, mask_data["ocean"], delta_streams, noise_seed)
-			delta_maker.naturalize_delta_islands(terrain_data, my_river, mask_data["delta"])
-			delta_maker.erode_delta_edges(terrain_data, mask_data["delta"], noise_seed)
+			# Route to map_data["terrain"]
+			delta_maker.naturalize_delta_islands(map_data["terrain"], my_river, mask_data["delta"])
+			delta_maker.erode_delta_edges(map_data["terrain"], mask_data["delta"], noise_seed)
 			# --- IN-PLACE DICTIONARY UPDATE ---
 			temp_delta = delta_maker.create_delta_mask2(my_river,3)
 			mask_data["delta"].clear()
@@ -146,8 +155,21 @@ func setup_river(
 			Profiler.end("River Delta")
 		
 		Profiler.end("total river generation")
-		add_river_regions_to_system_mask(my_river, mask_data["river"])
+		# Pass map_data["river"] instead of mask_data["river"]
+		add_river_regions_to_system_mask(my_river, map_data["river"])
 		return my_river
+
+# Updated parameter name to river_data
+func add_river_regions_to_system_mask(river: River, river_data: Dictionary) -> void:
+	if river == null or river.segments.is_empty():
+		return
+		
+	# Iterate through all the Region objects that make up the river
+	for region: Region in river.segments:
+		# Iterate through all the individual grid coordinates in the Region
+		for cell: Vector2 in region.points:
+			# Map the coordinate directly to the specific Region object
+			river_data[cell] = region
 
 
 	
@@ -235,9 +257,24 @@ func generate_map_grid(
 				"end_y": r_bound["end"]
 			}
 			grid.append(to_append)
-	#print(grid)
 	return grid
-
+	
+# Creates a dense boolean mask where EVERY cell on the map is assigned true or false.
+func create_full_river_mask(river_data: Dictionary, map_width: int, map_height: int) -> Dictionary:
+	var river_mask: Dictionary = {}
+	
+	# Iterate through every single cell on the map grid
+	for y in range(map_height):
+		for x in range(map_width):
+			var cell := Vector2(x, y)
+			
+			# Dictionary.has() returns true if the key exists in river_data, false otherwise.
+			# This perfectly maps to your requirement.
+			river_mask[cell] = river_data.has(cell)
+			
+	return river_mask
+	
+	
 func calculate_river_noises(noise_seed: int) -> Dictionary[int, Array]:
 	var result: Dictionary[int, Array] = {}
 
@@ -264,15 +301,3 @@ func _hash_int(value: int) -> int:
 	value = ((value >> 16) ^ value) * 0x45d9f3b
 	value = (value >> 16) ^ value
 	return value & 0x7fffffff  # keep positive
-
-# Adds every cell of a river to a global mask, mapping coordinates directly to the specific Region object.
-func add_river_regions_to_system_mask(river: River, region_mask: Dictionary) -> void:
-	if river == null or river.segments.is_empty():
-		return
-		
-	# Iterate through all the Region objects that make up the river
-	for region: Region in river.segments:
-		# Iterate through all the individual grid coordinates in the Region
-		for cell: Vector2 in region.points:
-			# Map the coordinate directly to the specific Region object
-			region_mask[cell] = region

@@ -5,11 +5,20 @@ extends Node2D
 @export var river_mode_selector: OptionButton
 @export var save_button: Button
 
+var current_map_mode: MapDisplayMode = MapDisplayMode.TERRAIN
+var temperature_data: Dictionary = {} # Make sure to populate this using ClimateGenerator!
+
 # River Display Mode
 enum RiverDisplayMode {
 	NORMAL,
 	DEBUG_SEGMENTS,
 	HIDDEN
+}
+
+enum MapDisplayMode {
+	TERRAIN,
+	WINTER_CLIMATE,
+	SUMMER_CLIMATE
 }
 
 var show_lakes: bool = false
@@ -31,14 +40,22 @@ var terrain_data: Dictionary[Vector2, float] = {}
 var _ocean_mask: Dictionary[Vector2, bool] = {} 
 var _beach_mask: Dictionary[Vector2, bool] = {} 
 var _delta_mask: Dictionary[Vector2, bool] = {} 
-var _river_mask: Dictionary[Vector2, Region] = {}
+var river_data: Dictionary[Vector2, Region] = {}
+var _river_mask : Dictionary[Vector2, bool] = {} 
 var _rivers: Array[River] = []
 
 var mask_data: Dictionary[String, Dictionary] ={
 	"ocean": _ocean_mask,
 	"beach": _beach_mask,
 	"delta": _delta_mask,
-	"river": _river_mask,
+	"river": _river_mask
+}
+
+
+var map_data : Dictionary[String, Dictionary] ={
+	"terrain": terrain_data,
+	"temperature": temperature_data,
+	"river": river_data,
 }
 
 func _ready():
@@ -51,7 +68,7 @@ func _ready():
 	
 	var res_scale = int(grid_width/reference_width)
 	#Profiler.start("total terrain generation")
-	
+	var climate_gen: Climate_Generator = Climate_Generator.new()
 	var world_gen: Terrain_Generator = Terrain_Generator.new()
 	var south_islands: South_Islands = South_Islands.new()
 	var ice_wall: Ice_Wall = Ice_Wall.new()
@@ -65,15 +82,21 @@ func _ready():
 	terrain_data = south_islands.apply_southern_islands(terrain_data, grid_width, grid_height, 150, 15, 60, noise_seed, res_scale)
 	terrain_data = ice_wall.apply_ice_wall(terrain_data, grid_width, noise_seed, res_scale)
 	#Profiler.end("total terrain generation")
+	map_data["terrain"] = terrain_data
 	
 	# Check where the ocean abd the beach are
-	mask_data["ocean"] = ocean_id.ocean_vs_land(terrain_data, grid_width, grid_height, global_ocean)
+	mask_data["ocean"] = ocean_id.ocean_vs_land(map_data["terrain"], grid_width, grid_height, global_ocean)
 	mask_data["beach"] = beach_id.generate_beach_mask(mask_data["ocean"], grid_width, grid_height, 5, res_scale)
 	
-	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, terrain_data, global_ocean, mask_data, {}, noise_seed, res_scale)
+
+	
+	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, map_data, global_ocean, mask_data, {}, noise_seed, res_scale)
 	_rivers.append(main_river)
-	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, terrain_data, global_ocean, mask_data, noise_seed, res_scale)
+	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, map_data, global_ocean, mask_data, noise_seed, res_scale)
 	_rivers.append_array(minor_rivers)
+	mask_data["river"] = river_handler.create_full_river_mask(map_data["river"], grid_width, grid_height)
+	temperature_data = climate_gen.generate_temperatures(map_data["terrain"], mask_data)
+	map_data["temperature"] = temperature_data
 	update_map_visuals()
 
 # Cache the texture so we don't regenerate it every frame
@@ -83,18 +106,24 @@ func update_map_visuals():
 	# 1. Create a blank image buffer
 	var img = Image.create(grid_width, grid_height, false, Image.FORMAT_RGBA8)
 	
-	# --- 1. SET TERRAIN PIXELS ---
-	if not terrain_data.is_empty() and not mask_data["ocean"].is_empty():
-		for pos in terrain_data:
+	# --- 1. SET TERRAIN / CLIMATE PIXELS ---
+	if not map_data["terrain"].is_empty() and not mask_data["ocean"].is_empty():
+		for pos in map_data["terrain"]:
 			if pos.x < 0 or pos.y < 0 or pos.x >= grid_width or pos.y >= grid_height:
 				continue
 			
-			var elevation = terrain_data[pos]
+			var elevation = map_data["terrain"][pos]
 			var is_ocean = mask_data["ocean"].get(pos, false)
-			# Combine real beach mask and delta mask for the sandy look
-			var is_real_beach = mask_data["beach"].get(pos, false) or mask_data["delta"].get(pos, false)
 			
-			var color = _get_layered_color(elevation, is_ocean, is_real_beach)
+			var color: Color
+			
+			if current_map_mode == MapDisplayMode.TERRAIN:
+				var is_real_beach = mask_data["beach"].get(pos, false) or mask_data["delta"].get(pos, false)
+				color = _get_layered_color(elevation, is_ocean, is_real_beach)
+			else:
+				var is_winter = (current_map_mode == MapDisplayMode.WINTER_CLIMATE)
+				color = _get_climate_color(pos, is_winter)
+				
 			img.set_pixel(int(pos.x), int(pos.y), color)
 
 	# --- 2. SET RIVER PIXELS ---
@@ -198,8 +227,8 @@ func _unhandled_input(event: InputEvent):
 				
 				# Fetch elevation for extra debugging info
 				var elevation = "N/A"
-				if not terrain_data.is_empty() and terrain_data.has(grid_pos):
-					elevation = str(snapped(terrain_data[grid_pos], 0.001))
+				if not map_data["terrain"].is_empty() and map_data["terrain"].has(grid_pos):
+					elevation = str(snapped(map_data["terrain"][grid_pos], 0.001))
 				
 				# Print to the Output console
 				print("📍 Map Clicked - Grid Pos: ", grid_pos, " | Elevation: ", elevation)
@@ -215,3 +244,29 @@ func get_elevation_at(map_data: Dictionary, x: int, y: int) -> float:
 	else:
 		push_warning("Coordinate not found in map data: ", pos)
 		return -1.0 # Return an impossible height to indicate an error
+
+# Helper function to map a temperature (Celsius) to a color heatmap
+func _get_climate_color(pos: Vector2, is_winter: bool) -> Color:
+	if not temperature_data.has(pos):
+		return Color.BLACK
+		
+	var temps: Vector2 = temperature_data[pos]
+	var t: float = temps.x if is_winter else temps.y
+	
+	# Temperature Color Ramp
+	if t < -15.0:
+		return Color("2c2c54") # Deep freezing purple
+	elif t < 0.0:
+		var w = inverse_lerp(-15.0, 0.0, t)
+		return Color("4a69bd").lerp(Color("74b9ff"), w) # Dark blue to light blue
+	elif t < 15.0:
+		var w = inverse_lerp(0.0, 15.0, t)
+		return Color("74b9ff").lerp(Color("55efc4"), w) # Light blue to mint green
+	elif t < 25.0:
+		var w = inverse_lerp(15.0, 25.0, t)
+		return Color("55efc4").lerp(Color("fdcb6e"), w) # Mint green to warm yellow
+	elif t < 35.0:
+		var w = inverse_lerp(25.0, 35.0, t)
+		return Color("fdcb6e").lerp(Color("d63031"), w) # Warm yellow to hot red
+	else:
+		return Color("b71540") # Extreme heat dark red

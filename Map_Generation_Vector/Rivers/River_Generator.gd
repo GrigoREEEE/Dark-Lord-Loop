@@ -11,7 +11,7 @@ func generate_natural_river(
 	width: int, 
 	height: int, 
 	ocean: Pool, 
-	river_mask: Dictionary, 
+	river_data: Dictionary, 
 	noise_seed: int, 
 	start_pos: Vector2,
 	target_dir: Vector2,
@@ -104,12 +104,12 @@ func generate_natural_river(
 			break
 			
 		# 3. Check for Collision with Another River
-		if river_mask.has(current_grid_pos):
+		if river_data.has(current_grid_pos):
 			river.mouth = current_grid_pos
 			_add_unique_point(river.river_path, current_grid_pos)
 			
 			# Extract the specific Region we hit and register this river to it
-			var hit_region: Region = river_mask[current_grid_pos]
+			var hit_region: Region = river_data[current_grid_pos]
 			hit_region.rivers_enter.append(river)
 			break
 			
@@ -205,7 +205,7 @@ func check_river_breach(river: River, beach_mask: Dictionary, mouth_segments_cou
 			if beach_mask.get(cell, false) == true:
 				# We found a breach!
 				# Optional: Print debug info to know where it happened
-				# print("River Breach detected at segment ", i, " position ", cell)
+				print("River Breach detected at segment ", i, " position ", cell)
 				return true
 				
 	return false
