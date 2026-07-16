@@ -1,9 +1,8 @@
 class_name Source_Selection
 
-
 # Selects a river source within a specific 2D grid cell.
 # - min_x, max_x, min_y, max_y: The boundaries of the cell on the map grid.
-# - elevation_power: Higher values make mountains exponentially more likely to be chosen.
+# - elevation_power: Higher values make the top end of the valid range exponentially more likely.
 func select_river_source(
 	map_data: Dictionary, 
 	ocean_mask: Dictionary, 
@@ -19,12 +18,11 @@ func select_river_source(
 	var total_weight: float = 0.0
 	
 	# --- 1. COLLECT CELLS & CALCULATE WEIGHTS ---
-	# We now iterate strictly within the 2D boundaries of the provided cell
 	for y in range(min_y, max_y + 1):
 		for x in range(min_x, max_x + 1):
 			var pos := Vector2(x, y)
 			
-			# Check 1: Must not be ocean (Updated for Sparse Dictionary optimization!)
+			# Check 1: Must not be ocean
 			if ocean_mask.has(pos):
 				continue
 				
@@ -34,14 +32,20 @@ func select_river_source(
 				
 			var elevation: float = map_data[pos]
 			
-			# Optional Check 3: Prevent rivers from spawning directly on the beach/marsh
+			# Check 3: Prevent rivers from spawning directly on the beach/marsh
 			if elevation < 0.2:
 				continue
 				
+			# Check 4: Hard cutoff — never start higher than 0.8
+			if elevation > 0.8:
+				continue
+				
 			# Calculate Weight
-			# Using pow() creates a stark contrast. 
-			# e.g., Elevation 0.8^5 = ~0.32 weight. Elevation 0.3^5 = ~0.002 weight.
-			var weight: float = pow(max(0.0, elevation), elevation_power)
+			# Normalize the elevation to scale cleanly from 0.0 to 1.0 within our allowed range.
+			# This ensures the elevation_power exponentially favors the 0.5 to 0.8 sweet spot
+			# while severely penalizing the 0.2 to 0.4 range.
+			var normalized_elevation: float = (elevation - 0.2) / (0.8 - 0.2)
+			var weight: float = pow(max(0.0, normalized_elevation), elevation_power)
 			
 			valid_cells.append({ "pos": pos, "weight": weight })
 			total_weight += weight
@@ -49,7 +53,6 @@ func select_river_source(
 	# Fallback if the entire cell is ocean or invalid
 	if valid_cells.is_empty():
 		push_warning("No valid land found in the specified map cell!")
-		# Return the dead center of the 2D cell
 		return Vector2((min_x + max_x) / 2.0, (min_y + max_y) / 2.0)
 		
 	# --- 2. ROULETTE WHEEL SELECTION ---

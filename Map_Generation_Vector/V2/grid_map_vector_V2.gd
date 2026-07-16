@@ -77,17 +77,18 @@ func _ready():
 	var river_handler : River_Handler = River_Handler.new()
 	var global_ocean: Pool = Pool.new()
 	global_ocean.type = "Ocean"
-	
+	Profiler.start("Terrain Generation")
 	terrain_data = world_gen.generate_height_map(grid_width, grid_height, noise_seed, res_scale)
 	terrain_data = south_islands.apply_southern_islands(terrain_data, grid_width, grid_height, 150, 15, 60, noise_seed, res_scale)
 	terrain_data = ice_wall.apply_ice_wall(terrain_data, grid_width, noise_seed, res_scale)
 	#Profiler.end("total terrain generation")
 	map_data["terrain"] = terrain_data
-	
+	Profiler.end("Terrain Generation")
+	Profiler.start("Beach and Mask Generation")
 	# Check where the ocean abd the beach are
 	mask_data["ocean"] = ocean_id.ocean_vs_land(map_data["terrain"], grid_width, grid_height, global_ocean)
 	mask_data["beach"] = beach_id.generate_beach_mask(mask_data["ocean"], grid_width, grid_height, 5, res_scale)
-	
+	Profiler.end("Beach and Mask Generation")
 
 	
 	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, map_data, global_ocean, mask_data, {}, noise_seed, res_scale)
@@ -96,7 +97,9 @@ func _ready():
 	_rivers.append_array(minor_rivers)
 	mask_data["river"] = river_handler.create_full_river_mask(map_data["river"], grid_width, grid_height)
 	temperature_data = climate_gen.generate_temperatures(map_data["terrain"], mask_data)
+	Profiler.start("Temperature Generation")
 	map_data["temperature"] = temperature_data
+	Profiler.end("Temperature Generation")
 	update_map_visuals()
 
 # Cache the texture so we don't regenerate it every frame

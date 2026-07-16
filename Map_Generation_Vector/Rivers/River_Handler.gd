@@ -15,10 +15,10 @@ var main_river_erosion: Dictionary[String, float] = {
 "end erosion": 0.75
 }
 var side_river_erosion: Dictionary[String, float] = {
-"start radius": 5.0,
-"end radius": 10.0,
+"start radius": 40.0,
+"end radius": 40.0,
 "start erosion": 0.6,
-"end erosion": 0.1
+"end erosion": 0.6
 }
 
 func handle_rivers(
