@@ -7,17 +7,17 @@ var to_merge: int = 0 #number of the main river segments we merge to form delta
 var bands_quantity: int = 5
 var chunk_size: int = 7
 var delta_streams: Dictionary[int, int] = {3:1,2:2,1:2} #size and number of streams that form the delta
-var bands_rivers: Dictionary[int, int] = {0:1, 1:1, 2:1, 3:1, 4:1}
+var bands_rivers: Dictionary[int, int] = {0:2, 1:3, 2:3, 3:2, 4:2}
 var main_river_erosion: Dictionary[String, float] = {
 "start radius": 80.0,
 "end radius": 50.0,
-"start erosion": 0.85,
-"end erosion": 0.75
+"start erosion": 0.7,
+"end erosion": 0.85
 }
 var side_river_erosion: Dictionary[String, float] = {
-"start radius": 40.0,
-"end radius": 40.0,
-"start erosion": 0.6,
+"start radius": 20.0,
+"end radius": 30.0,
+"start erosion": 0.5,
 "end erosion": 0.6
 }
 
@@ -95,17 +95,18 @@ func setup_river(
 		return setup_river(type, map_width, map_height, map_data, global_ocean, mask_data, cell, noise_seed, res_scale)
 	else:
 		Profiler.end("River Breach Check")
-		Profiler.start("Erosion")
+		
 		## Apply Erosion
+		Profiler.start("Erosion")
+		var erosion_data_to_use : Dictionary[String, float]
 		if type == "main":
-			var msk = erosion.generate_river_valley_mask(my_river.river_path, main_river_erosion["start radius"], main_river_erosion["end radius"], 20 * res_scale)
-			# Route to map_data["terrain"]
-			erosion.apply_target_height_erosion(map_data["terrain"], msk, mask_data["ocean"], 0.2, main_river_erosion)
+			erosion_data_to_use = main_river_erosion
 		else:
-			var msk = erosion.generate_river_valley_mask(my_river.river_path, side_river_erosion["start radius"], side_river_erosion["end radius"], 20 * res_scale)
-			# Route to map_data["terrain"]
-			erosion.apply_target_height_erosion(map_data["terrain"], msk, mask_data["ocean"], 0.2, side_river_erosion)
+			erosion_data_to_use = side_river_erosion
+		mask_data["vally_outer"] = erosion.generate_river_valley_mask(my_river.river_path, erosion_data_to_use, 20 * res_scale)
+		erosion.apply_target_height_erosion(map_data["terrain"], mask_data["vally_outer"], mask_data["ocean"], 0.2, erosion_data_to_use, my_river.river_path.size())
 		Profiler.end("Erosion")
+		
 		# --- IN-PLACE DICTIONARY UPDATES ---
 		Profiler.start("Ocean Mask Making")
 		# Route to map_data["terrain"]

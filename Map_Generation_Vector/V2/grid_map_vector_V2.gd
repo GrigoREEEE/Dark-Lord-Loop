@@ -6,7 +6,6 @@ extends Node2D
 @export var save_button: Button
 
 var current_map_mode: MapDisplayMode = MapDisplayMode.TERRAIN
-var temperature_data: Dictionary = {} # Make sure to populate this using ClimateGenerator!
 
 # River Display Mode
 enum RiverDisplayMode {
@@ -36,19 +35,27 @@ var current_river_mode: RiverDisplayMode = RiverDisplayMode.NORMAL
 @export var water_level: float = 0.15 # Elevations below this are drawn as water
 
 # --- Data Holders ---
+var temperature_data: Dictionary = {} # Make sure to populate this using ClimateGenerator!
+var river_data: Dictionary[Vector2, Region] = {}
 var terrain_data: Dictionary[Vector2, float] = {}
+var lake_data: Dictionary[Vector2, Region] = {}
+var global_water_data: Dictionary[Vector2, Region] = {}
+var _rivers: Array[River] = []
+# --- Mask Holders ---
 var _ocean_mask: Dictionary[Vector2, bool] = {} 
 var _beach_mask: Dictionary[Vector2, bool] = {} 
 var _delta_mask: Dictionary[Vector2, bool] = {} 
-var river_data: Dictionary[Vector2, Region] = {}
 var _river_mask : Dictionary[Vector2, bool] = {} 
-var _rivers: Array[River] = []
+var _outer_valley_mask : Dictionary[Vector2, bool] = {}
+var _lake_mask : Dictionary[Vector2, bool] = {} 
 
 var mask_data: Dictionary[String, Dictionary] ={
 	"ocean": _ocean_mask,
 	"beach": _beach_mask,
 	"delta": _delta_mask,
-	"river": _river_mask
+	"river": _river_mask,
+	"vally_outer": _outer_valley_mask,
+	"lake": _lake_mask
 }
 
 
@@ -56,11 +63,12 @@ var map_data : Dictionary[String, Dictionary] ={
 	"terrain": terrain_data,
 	"temperature": temperature_data,
 	"river": river_data,
+	"lake": lake_data
 }
 
 func _ready():
 	reference_width = 400
-	noise_seed = randi() # 177024239 #randi() #58196215 #randi() #663202794#
+	noise_seed = 1599947545 #randi() # 177024239 #randi() #58196215 #randi() #663202794#
 	print("Noise seed is: %s" % noise_seed)
 	
 	var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -96,9 +104,9 @@ func _ready():
 	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, map_data, global_ocean, mask_data, noise_seed, res_scale)
 	_rivers.append_array(minor_rivers)
 	mask_data["river"] = river_handler.create_full_river_mask(map_data["river"], grid_width, grid_height)
-	temperature_data = climate_gen.generate_temperatures(map_data["terrain"], mask_data)
 	Profiler.start("Temperature Generation")
-	map_data["temperature"] = temperature_data
+	#temperature_data = climate_gen.generate_temperatures(map_data["terrain"], mask_data)
+	#map_data["temperature"] = temperature_data
 	Profiler.end("Temperature Generation")
 	update_map_visuals()
 
