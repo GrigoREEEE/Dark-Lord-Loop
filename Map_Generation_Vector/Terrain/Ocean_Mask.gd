@@ -12,7 +12,7 @@ func ocean_vs_land2(
 	map_data: Dictionary, 
 	width: int, 
 	height: int, 
-	ocean_pool: Pool, 
+	ocean_pool: Water_Pool, 
 	water_level: float = 0.15
 ) -> Dictionary[Vector2, bool]:
 	
@@ -64,7 +64,7 @@ func _check_ocean_seed(
 	lvl: float, 
 	queue: Array[Vector2], 
 	ocean_map: Dictionary[Vector2, bool], 
-	ocean_pool: Pool
+	ocean_pool: Water_Pool
 ):
 	var pos := Vector2(x, y)
 	if map_data.has(pos) and map_data[pos] < lvl:
@@ -83,7 +83,7 @@ func ocean_vs_land(
 	map_data: Dictionary, 
 	width: int, 
 	height: int, 
-	ocean_pool: Pool, 
+	ocean_pool: Water_Pool, 
 	water_level: float = 0.15
 ) -> Dictionary[Vector2, bool]:
 	

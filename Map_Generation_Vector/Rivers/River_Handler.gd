@@ -7,7 +7,7 @@ var to_merge: int = 0 #number of the main river segments we merge to form delta
 var bands_quantity: int = 5
 var chunk_size: int = 7
 var delta_streams: Dictionary[int, int] = {3:1,2:2,1:2} #size and number of streams that form the delta
-var bands_rivers: Dictionary[int, int] = {0:2, 1:3, 2:3, 3:2, 4:2}
+var bands_rivers: Dictionary[int, int] = {0:1, 1:1, 6:1, 7:1}
 var main_river_erosion: Dictionary[String, float] = {
 "start radius": 80.0,
 "end radius": 50.0,
@@ -25,7 +25,7 @@ func handle_rivers(
 	map_width: int,
 	map_height: int, 
 	map_data: Dictionary[String, Dictionary], 
-	global_ocean : Pool,
+	global_ocean : Water_Pool,
 	mask_data: Dictionary[String, Dictionary],
 	noise_seed: int, 
 	res_scale: float
@@ -52,7 +52,7 @@ func setup_river(
 	map_width: int,
 	map_height: int, 
 	map_data: Dictionary[String, Dictionary], 
-	global_ocean : Pool,
+	global_ocean : Water_Pool,
 	mask_data: Dictionary[String, Dictionary], 
 	cell : Dictionary[String, int],
 	noise_seed: int, 
@@ -61,6 +61,7 @@ func setup_river(
 	Profiler.start("total river generation")
 	var Source_Selector : Source_Selection = Source_Selection.new()
 	var river_gen: River_Generator = River_Generator.new()
+	var small_river_gen: Small_River_Generator = Small_River_Generator.new()
 	var erosion: River_Erosion = River_Erosion.new()
 	var ocean_id: Ocean_Identification = Ocean_Identification.new()
 	var beach_id: Beach_Identification = Beach_Identification.new()
@@ -84,7 +85,11 @@ func setup_river(
 	## Generate the River
 	Profiler.start("River Path Generation")
 	# Pass map_data["river"] instead of mask_data["river"]
-	my_river = river_gen.generate_natural_river(map_width, map_height, global_ocean, map_data["river"], noise_seed, river_start_pos, river_direction, res_scale)
+	if type == "main": 
+		my_river = river_gen.generate_natural_river(map_width, map_height, global_ocean, map_data["river"], noise_seed, river_start_pos, river_direction, res_scale)
+	else:
+		print("SMall river starts at %s" % river_start_pos)
+		my_river = small_river_gen.generate_small_natural_river(map_width, map_height, global_ocean, map_data["terrain"], mask_data, map_data["river"], river_start_pos)
 	Profiler.end("River Path Generation")
 	Profiler.start("River Breach Check")
 	if check_river_breach(my_river, mask_data["beach"], mouth_segments):

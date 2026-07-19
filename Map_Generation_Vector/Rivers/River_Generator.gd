@@ -10,7 +10,7 @@ class_name River_Generator
 func generate_natural_river(
 	width: int, 
 	height: int, 
-	ocean: Pool, 
+	ocean: Water_Pool, 
 	river_data: Dictionary, 
 	noise_seed: int, 
 	start_pos: Vector2,
@@ -100,7 +100,7 @@ func generate_natural_river(
 			_add_unique_point(river.river_path, current_grid_pos)
 			
 			# Register this river with the Ocean
-			ocean.rivers_enter.append(river)
+			ocean.rivers_in.append(river)
 			break
 			
 		# 3. Check for Collision with Another River
@@ -110,7 +110,7 @@ func generate_natural_river(
 			
 			# Extract the specific Region we hit and register this river to it
 			var hit_region: Region = river_data[current_grid_pos]
-			hit_region.rivers_enter.append(river)
+			hit_region.rivers_in.append(river)
 			break
 			
 		_add_unique_point(river.river_path, current_grid_pos)

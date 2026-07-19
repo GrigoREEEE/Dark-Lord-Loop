@@ -9,7 +9,7 @@ var segment_flow: Array[float] = []
 var river_mass: Array[Vector2] = []
 var is_proper : bool = true
 var enters_into : Water_Body
-var rivers_enter : Array[River] = []
+var rivers_in : Array[River] = []
 
 # New function to partition the river into connected Region objects
 func create_segments(chunk_size: int) -> void:

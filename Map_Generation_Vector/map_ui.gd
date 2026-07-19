@@ -35,6 +35,7 @@ func setup_buttons():
 		map_mode_selector.add_item("Terrain Mode", 0) # MapDisplayMode.TERRAIN
 		map_mode_selector.add_item("Winter Climate", 1) # MapDisplayMode.WINTER_CLIMATE
 		map_mode_selector.add_item("Summer Climate", 2) # MapDisplayMode.SUMMER_CLIMATE
+		map_mode_selector.add_item("Height Map", 3) # MapDisplayMode.HEIGHT_MAP
 		map_mode_selector.item_selected.connect(_on_map_mode_changed)
 
 	save_button.pressed.connect(_on_save_button_pressed)

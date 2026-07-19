@@ -1,7 +1,5 @@
 extends Node2D
 
-
-
 @export var river_mode_selector: OptionButton
 @export var save_button: Button
 
@@ -17,7 +15,8 @@ enum RiverDisplayMode {
 enum MapDisplayMode {
 	TERRAIN,
 	WINTER_CLIMATE,
-	SUMMER_CLIMATE
+	SUMMER_CLIMATE,
+	HEIGHT_MAP
 }
 
 var show_lakes: bool = false
@@ -83,7 +82,7 @@ func _ready():
 	var ocean_id: Ocean_Identification = Ocean_Identification.new()
 	var beach_id: Beach_Identification = Beach_Identification.new()
 	var river_handler : River_Handler = River_Handler.new()
-	var global_ocean: Pool = Pool.new()
+	var global_ocean: Water_Pool = Water_Pool.new()
 	global_ocean.type = "Ocean"
 	Profiler.start("Terrain Generation")
 	terrain_data = world_gen.generate_height_map(grid_width, grid_height, noise_seed, res_scale)
@@ -117,7 +116,7 @@ func update_map_visuals():
 	# 1. Create a blank image buffer
 	var img = Image.create(grid_width, grid_height, false, Image.FORMAT_RGBA8)
 	
-	# --- 1. SET TERRAIN / CLIMATE PIXELS ---
+	# --- 1. SET TERRAIN / CLIMATE / HEIGHT PIXELS ---
 	if not map_data["terrain"].is_empty() and not mask_data["ocean"].is_empty():
 		for pos in map_data["terrain"]:
 			if pos.x < 0 or pos.y < 0 or pos.x >= grid_width or pos.y >= grid_height:
@@ -131,6 +130,8 @@ func update_map_visuals():
 			if current_map_mode == MapDisplayMode.TERRAIN:
 				var is_real_beach = mask_data["beach"].get(pos, false) or mask_data["delta"].get(pos, false)
 				color = _get_layered_color(elevation, is_ocean, is_real_beach)
+			elif current_map_mode == MapDisplayMode.HEIGHT_MAP:
+				color = _get_height_color(elevation)
 			else:
 				var is_winter = (current_map_mode == MapDisplayMode.WINTER_CLIMATE)
 				color = _get_climate_color(pos, is_winter)
@@ -178,6 +179,21 @@ func update_map_visuals():
 	
 	# 5. Tell Godot to repaint
 	queue_redraw()
+	
+func _get_height_color(e: float) -> Color:
+	# Convert elevation from range [-1.0, 1.0] to a normalized [0.0, 1.0] weight
+	var w = clamp(inverse_lerp(-1.0, 1.0, e), 0.0, 1.0)
+	
+	# Using a Red -> Yellow -> Green gradient makes it much easier to read
+	# than a direct Red -> Green blend (which turns muddy brown in the middle)
+	if w < 0.5:
+		# Bottom half: Red blending into Yellow
+		var local_w = w * 2.0
+		return Color.RED.lerp(Color.YELLOW, local_w)
+	else:
+		# Top half: Yellow blending into Green
+		var local_w = (w - 0.5) * 2.0
+		return Color.YELLOW.lerp(Color.GREEN, local_w)
 
 # --- Helper to avoid code duplication ---
 func _draw_simple_river_path(img: Image, river, color: Color):
@@ -239,7 +255,7 @@ func _unhandled_input(event: InputEvent):
 				# Fetch elevation for extra debugging info
 				var elevation = "N/A"
 				if not map_data["terrain"].is_empty() and map_data["terrain"].has(grid_pos):
-					elevation = str(snapped(map_data["terrain"][grid_pos], 0.001))
+					elevation = str(snapped(map_data["terrain"][grid_pos], 0.0001))
 				
 				# Print to the Output console
 				print("📍 Map Clicked - Grid Pos: ", grid_pos, " | Elevation: ", elevation)
