@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="World_Data" format=3 uid="uid://bs05ah2m0mmah"]
+
+[ext_resource type="Script" uid="uid://bhv3stpv347wb" path="res://Map_Generation_Vector/World_Data.gd" id="1_5r5ut"]
+
+[resource]
+script = ExtResource("1_5r5ut")
+noise_seed = null
+reference_width = null
+cell_size = null
+grid_width = null
+grid_height = null
+terrain_generation_data_frequency = null
+terrain_generation_data_octaves = null
+delta_streams = null
+bands_rivers = null
+main_river_erosion = null
+side_river_erosion = null
+map_data = null
+mask_data = null
+metadata/_custom_type_script = "uid://bhv3stpv347wb"

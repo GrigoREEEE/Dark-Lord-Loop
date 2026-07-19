@@ -10,8 +10,11 @@ script = ExtResource("1_1e54l")
 river_mode_selector = NodePath("Map_UI/RiverModeSelector")
 save_button = NodePath("Map_UI/SaveButton")
 noise_seed = 100
+reference_width = null
+cell_size = null
 grid_width = 1200
 grid_height = 1800
+water_level = null
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=719009694]
 position = Vector2(576, 324)
@@ -41,6 +44,7 @@ offset_right = 816.0
 offset_bottom = 22.0
 
 [node name="SaveButton" type="Button" parent="Map_UI" unique_id=1638235133]
+visible = false
 offset_left = 618.0
 offset_top = 7.0
 offset_right = 626.0

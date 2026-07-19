@@ -106,10 +106,12 @@ func setup_river(
 		var erosion_data_to_use : Dictionary[String, float]
 		if type == "main":
 			erosion_data_to_use = main_river_erosion
-		else:
-			erosion_data_to_use = side_river_erosion
-		mask_data["vally_outer"] = erosion.generate_river_valley_mask(my_river.river_path, erosion_data_to_use, 20 * res_scale)
-		erosion.apply_target_height_erosion(map_data["terrain"], mask_data["vally_outer"], mask_data["ocean"], 0.2, erosion_data_to_use, my_river.river_path.size())
+			mask_data["vally_outer"] = erosion.generate_river_valley_mask(my_river.river_path, erosion_data_to_use, 20 * res_scale)
+			erosion.apply_target_height_erosion(map_data["terrain"], mask_data["vally_outer"], mask_data["ocean"], 0.2, erosion_data_to_use, my_river.river_path.size())
+		#else:
+			#erosion_data_to_use = side_river_erosion
+		#mask_data["vally_outer"] = erosion.generate_river_valley_mask(my_river.river_path, erosion_data_to_use, 20 * res_scale)
+		#erosion.apply_target_height_erosion(map_data["terrain"], mask_data["vally_outer"], mask_data["ocean"], 0.2, erosion_data_to_use, my_river.river_path.size())
 		Profiler.end("Erosion")
 		
 		# --- IN-PLACE DICTIONARY UPDATES ---
@@ -139,7 +141,7 @@ func setup_river(
 			## Expand the river
 			Profiler.start("River Expanding")
 			# Route to map_data["terrain"]
-			river_expander.widen_river_iterative(map_data["terrain"], my_river, mask_data["ocean"], mouth_segments, 20.0 * res_scale, 1.0 * res_scale)
+			river_expander.widen_river_iterative(map_data["terrain"], my_river, mask_data["ocean"], mouth_segments, 10.0 * res_scale, 1.0 * res_scale)
 			Profiler.end("River Expanding")
 			Profiler.start("River merge")
 			river_expander.merge_segments(my_river, to_merge)

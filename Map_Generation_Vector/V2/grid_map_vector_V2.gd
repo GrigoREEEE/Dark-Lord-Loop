@@ -19,7 +19,6 @@ enum MapDisplayMode {
 	HEIGHT_MAP
 }
 
-var show_lakes: bool = false
 
 var current_river_mode: RiverDisplayMode = RiverDisplayMode.NORMAL
 
@@ -48,21 +47,20 @@ var _river_mask : Dictionary[Vector2, bool] = {}
 var _outer_valley_mask : Dictionary[Vector2, bool] = {}
 var _lake_mask : Dictionary[Vector2, bool] = {} 
 
-var mask_data: Dictionary[String, Dictionary] ={
-	"ocean": _ocean_mask,
-	"beach": _beach_mask,
-	"delta": _delta_mask,
-	"river": _river_mask,
-	"vally_outer": _outer_valley_mask,
-	"lake": _lake_mask
+var map_data : Dictionary[String, Dictionary] = {
+	"terrain": {},
+	"temperature": {},
+	"river": {},
+	"lake": {}
 }
 
-
-var map_data : Dictionary[String, Dictionary] ={
-	"terrain": terrain_data,
-	"temperature": temperature_data,
-	"river": river_data,
-	"lake": lake_data
+var mask_data: Dictionary[String, Dictionary] ={
+	"ocean": {},
+	"beach": {},
+	"delta": {},
+	"river": {},
+	"vally_outer": {},
+	"lake": {}
 }
 
 func _ready():

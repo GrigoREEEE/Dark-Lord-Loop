@@ -23,46 +23,60 @@ func apply_southern_islands(map_data: Dictionary, width: int, height: int, belt_
 	terrain_noise.frequency = 0.02 / res_scale
 	terrain_noise.fractal_octaves = 6
 	
+	# --- NEW: MICRO-NOISE FOR DETAILS ---
+	var detail_noise = FastNoiseLite.new()
+	detail_noise.seed = noise_seed + 300
+	detail_noise.frequency = 0.08 / res_scale # High frequency for micro-bumps
+	detail_noise.fractal_octaves = 3
+	
 	var belt_end_y = height - bottom_padding
 	var belt_start_y = belt_end_y - belt_height
 	
-	# --- CHANGE 1: LOOP THE FULL WIDTH ---
-	# We iterate the full width so we can handle the fade logic per-pixel.
-	# We rely on math to hide the islands, not the loop range.
 	for x in range(width):
 		for y in range(belt_start_y, belt_end_y):
 			var pos = Vector2(x, y)
 			
-			# --- CHANGE 2: CALCULATE EDGE FADE ---
-			# We measure how close we are to the nearest Left/Right edge.
-			var dist_to_edge = min(x, width - x)
+			# --- NEW: DOMAIN WARPING ---
+			# We use the shape noise (sampled far away) to push the X and Y coordinates around.
+			# This creates a "wiggle" in the math so the island chain isn't a perfect straight line.
+			var warp_x = shape_noise.get_noise_2d(x + 1000, y + 1000) * (20.0 * res_scale)
+			var warp_y = shape_noise.get_noise_2d(x - 1000, y - 1000) * (20.0 * res_scale)
 			
-			# If we are inside the padding zone, this multiplier drops to 0.0.
-			# If we are safe inside the map, it is 1.0.
-			# We use a smooth transition so it looks like a natural beach slope.
+			var warped_x = clamp(x + warp_x, 0.0, width)
+			var warped_y = y + warp_y
+			
+			# --- CALCULATE EDGE FADE (Using Warped X) ---
+			var dist_to_edge = min(warped_x, width - warped_x)
 			var edge_fade = smoothstep(0.0, float(side_padding), float(dist_to_edge))
 			
-			# --- VERTICAL MASK ---
-			var belt_progress = float(y - belt_start_y) / float(belt_height)
+			# --- VERTICAL MASK (Using Warped Y) ---
+			var belt_progress = float(warped_y - belt_start_y) / float(belt_height)
+			# Clamp is critical here because warping might push progress slightly outside 0 to 1,
+			# and sin() of negative numbers would carve inverse holes in the ocean.
+			belt_progress = clamp(belt_progress, 0.0, 1.0) 
 			var belt_mask = sin(belt_progress * PI)
 			
 			# --- GENERATE TERRAIN ---
 			var base_shape = shape_noise.get_noise_2d(x, y)
 			var detail = terrain_noise.get_noise_2d(x, y)
+			var d_noise = detail_noise.get_noise_2d(x, y)
+			
 			var elevation = (base_shape * 0.7) + (detail * 0.4)
 			
 			# Apply Vertical Mask (North/South fade)
 			elevation *= belt_mask
 			
-			# --- CHANGE 3: APPLY EDGE FADE ---
-			# This pushes the land underwater as it nears the left/right border.
+			# Apply Edge Fade (East/West fade)
 			elevation *= edge_fade
 			
-			# Add offset
+			# --- NEW: APPLY MICRO-NOISE ---
+			# We add the micro-noise scaled down so it just textures the surface
+			elevation += d_noise * 0.05
+			
+			# Add offset so islands actually peek out of the water
 			elevation += 0.05 * belt_mask
 			
 			# --- THRESHOLD CHECK ---
-			# Only write if it's actually land/beach.
 			if elevation > 0.12:
 				var existing_height = map_data.get(pos, -1.0)
 				map_data[pos] = max(existing_height, elevation)
