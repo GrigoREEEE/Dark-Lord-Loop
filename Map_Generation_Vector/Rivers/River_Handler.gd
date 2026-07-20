@@ -22,6 +22,7 @@ var side_river_erosion: Dictionary[String, float] = {
 }
 
 func handle_rivers(
+	world_data: World_Data,
 	map_width: int,
 	map_height: int, 
 	map_data: Dictionary[String, Dictionary], 
@@ -43,12 +44,13 @@ func handle_rivers(
 			river_to_add -= 1
 			var cell: Dictionary[String, int] = cells_set[i]
 			# Pass map_data instead of terrain_data
-			var river: River = setup_river("side", map_width, map_height, map_data, global_ocean, mask_data, cell, selecte_noise, res_scale)
+			var river: River = setup_river("side", world_data, map_width, map_height, map_data, global_ocean, mask_data, cell, selecte_noise, res_scale)
 			river_system.append(river)
 	return river_system
 
 func setup_river(
 	type: String,
+	world_data: World_Data,
 	map_width: int,
 	map_height: int, 
 	map_data: Dictionary[String, Dictionary], 
@@ -97,7 +99,7 @@ func setup_river(
 		noise_seed = randi()
 		print("New river noise seed is: %s" % noise_seed)
 		# Pass map_data
-		return setup_river(type, map_width, map_height, map_data, global_ocean, mask_data, cell, noise_seed, res_scale)
+		return setup_river(type, world_data, map_width, map_height, map_data, global_ocean, mask_data, cell, noise_seed, res_scale)
 	else:
 		Profiler.end("River Breach Check")
 		
@@ -141,7 +143,7 @@ func setup_river(
 			## Expand the river
 			Profiler.start("River Expanding")
 			# Route to map_data["terrain"]
-			river_expander.widen_river_iterative(map_data["terrain"], my_river, mask_data["ocean"], mouth_segments, 10.0 * res_scale, 1.0 * res_scale)
+			river_expander.widen_river_iterative(world_data, my_river, mouth_segments, 10.0 * res_scale, 1.0 * res_scale)
 			Profiler.end("River Expanding")
 			Profiler.start("River merge")
 			river_expander.merge_segments(my_river, to_merge)

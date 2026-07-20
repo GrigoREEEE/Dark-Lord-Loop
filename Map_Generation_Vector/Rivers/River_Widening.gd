@@ -2,20 +2,20 @@ extends Node
 
 class_name River_Widener
 
+var flood_cost_base: float = 1.0
+var flood_climb_cost: float = 5.0
+var flood_distance_cost: float = 0.3
+var climb_tolerance: float = 0.01
+
 # Widens the river using an "Iterative Round-Robin" approach.
 # - Mouth segments gain EXPONENTIAL flow towards the ocean.
 # - Cells <= 0.07 height are flooded for FREE (0 cost).
 func widen_river_iterative(
-	map_data: Dictionary, 
-	river: River, 
-	ocean_mask: Dictionary,
+	world_data: World_Data,
+	river: River,
 	mouth_segments : int,
 	base_flow_gain: float, 
 	flow_increment: float, 
-	flood_cost_base: float = 1.0, 
-	flood_climb_cost: float = 5.0,
-	flood_distance_cost: float = 0.3,
-	climb_tolerance: float = 0.01
 ):
 	
 	river.segment_flow.clear()
@@ -55,9 +55,9 @@ func widen_river_iterative(
 		
 		var bed_height = 0.0
 		if not core_cells.is_empty():
-			bed_height = map_data[core_cells[0]]
+			bed_height = world_data.map_data["terrain"][core_cells[0]]
 		elif not region.points.is_empty():
-			bed_height = map_data[region.points[0]]
+			bed_height = world_data.map_data["terrain"][region.points[0]]
 			
 		segment_data_cache.append({
 			"core_cells": core_cells,
@@ -89,13 +89,13 @@ func widen_river_iterative(
 				for d in directions:
 					var neighbor = cell + d
 					
-					if not map_data.has(neighbor): continue
+					if not world_data.map_data["terrain"].has(neighbor): continue
 					if river_cells_set.has(neighbor): continue
 					if candidate_set.has(neighbor): continue
-					if ocean_mask.get(neighbor, false) == true: continue
+					if world_data.mask_data["ocean"].get(neighbor, false) == true: continue
 					
 					# B. CALCULATE COST
-					var target_height = map_data[neighbor]
+					var target_height = world_data.map_data["terrain"][neighbor]
 					var cost = 0.0
 					
 					# FREE FLOODING for lowlands (lakes/depressions)

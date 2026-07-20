@@ -5,19 +5,22 @@ class_name Ice_Wall
 ######### Icewall Generation ###########
 ########################################
 
-func apply_ice_wall(map_data: Dictionary, width: int, noise_seed : int, res_scale : float = 1):
-	var wall_base_height = int(15 * res_scale)
-	var wall_variance = int(10 * res_scale)
+func apply_ice_wall(world_data: World_Data, noise_seed : int, res_scale : float = 1):
+	var terrain_data: Dictionary = world_data.map_data["terrain"]
+	var width: int = world_data.grid_width
+	
+	var wall_base_height = int(world_data.wall_base_height * res_scale)
+	var wall_variance = int(world_data.wall_variance * res_scale)
 	
 	# Separate noise for the wall shape (Wobble)
 	var wall_shape_noise = FastNoiseLite.new()
 	wall_shape_noise.seed = noise_seed + 99
-	wall_shape_noise.frequency = 0.02 / res_scale
+	wall_shape_noise.frequency = world_data.wall_frequency["shape"]/ res_scale
 	
 	# Separate noise for the wall texture (Spikes)
 	var wall_texture_noise = FastNoiseLite.new()
 	wall_texture_noise.seed = noise_seed
-	wall_texture_noise.frequency = 0.05 / res_scale
+	wall_texture_noise.frequency = world_data.wall_frequency["texture"] / res_scale
 	
 	for x in range(width):
 		# 1. Determine how tall the wall is at this specific X coordinate
@@ -32,6 +35,6 @@ func apply_ice_wall(map_data: Dictionary, width: int, noise_seed : int, res_scal
 			var wall_elevation = 1.2 + (n * 0.5)
 			
 			# This simply overwrites whatever land/ocean was generated there
-			map_data[Vector2(x, y)] = wall_elevation
+			terrain_data[Vector2(x, y)] = wall_elevation
 			
-	return map_data
+	return terrain_data

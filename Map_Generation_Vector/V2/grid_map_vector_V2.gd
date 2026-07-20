@@ -4,7 +4,7 @@ extends Node2D
 @export var save_button: Button
 
 var current_map_mode: MapDisplayMode = MapDisplayMode.TERRAIN
-
+var world_data: World_Data
 # River Display Mode
 enum RiverDisplayMode {
 	NORMAL,
@@ -35,7 +35,7 @@ var current_river_mode: RiverDisplayMode = RiverDisplayMode.NORMAL
 # --- Data Holders ---
 var temperature_data: Dictionary = {} # Make sure to populate this using ClimateGenerator!
 var river_data: Dictionary[Vector2, Region] = {}
-var terrain_data: Dictionary[Vector2, float] = {}
+var terrain_temperature_data: Dictionary[Vector2, float] = {}
 var lake_data: Dictionary[Vector2, Region] = {}
 var global_water_data: Dictionary[Vector2, Region] = {}
 var _rivers: Array[River] = []
@@ -45,7 +45,8 @@ var _beach_mask: Dictionary[Vector2, bool] = {}
 var _delta_mask: Dictionary[Vector2, bool] = {} 
 var _river_mask : Dictionary[Vector2, bool] = {} 
 var _outer_valley_mask : Dictionary[Vector2, bool] = {}
-var _lake_mask : Dictionary[Vector2, bool] = {} 
+var _lake_mask : Dictionary[Vector2, bool] = {}
+
 
 var map_data : Dictionary[String, Dictionary] = {
 	"terrain": {},
@@ -70,7 +71,7 @@ func _ready():
 	
 	var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	var _winding_noise: FastNoiseLite = FastNoiseLite.new()
-	
+	world_data = load("res://Map/World_Data.tres")
 	var res_scale = int(grid_width/reference_width)
 	#Profiler.start("total terrain generation")
 	var climate_gen: Climate_Generator = Climate_Generator.new()
@@ -83,22 +84,22 @@ func _ready():
 	var global_ocean: Water_Pool = Water_Pool.new()
 	global_ocean.type = "Ocean"
 	Profiler.start("Terrain Generation")
-	terrain_data = world_gen.generate_height_map(grid_width, grid_height, noise_seed, res_scale)
-	terrain_data = south_islands.apply_southern_islands(terrain_data, grid_width, grid_height, 150, 15, 60, noise_seed, res_scale)
-	terrain_data = ice_wall.apply_ice_wall(terrain_data, grid_width, noise_seed, res_scale)
+	world_gen.generate_height_map(world_data, noise_seed, res_scale)
+	south_islands.apply_southern_islands(world_data, noise_seed, res_scale)
+	world_data.map_data["terrain"] = ice_wall.apply_ice_wall(world_data.map_data["terrain"], grid_width, noise_seed, res_scale)
 	#Profiler.end("total terrain generation")
-	map_data["terrain"] = terrain_data
+	world_data.map_data["terrain"]= world_data.map_data["terrain"]
 	Profiler.end("Terrain Generation")
 	Profiler.start("Beach and Mask Generation")
 	# Check where the ocean abd the beach are
-	mask_data["ocean"] = ocean_id.ocean_vs_land(map_data["terrain"], grid_width, grid_height, global_ocean)
-	mask_data["beach"] = beach_id.generate_beach_mask(mask_data["ocean"], grid_width, grid_height, 5, res_scale)
+	world_data.mask_data["ocean"] = ocean_id.ocean_vs_land(world_data.map_data["terrain"], grid_width, grid_height, global_ocean)
+	world_data.mask_data["beach"] = beach_id.generate_beach_mask(world_data.mask_data["ocean"], grid_width, grid_height, 5, res_scale)
 	Profiler.end("Beach and Mask Generation")
 
 	
-	var main_river : River = river_handler.setup_river("main", grid_width, grid_height, map_data, global_ocean, mask_data, {}, noise_seed, res_scale)
+	var main_river : River = river_handler.setup_river("main", world_data, grid_width, grid_height, map_data, global_ocean, mask_data, {}, noise_seed, res_scale)
 	_rivers.append(main_river)
-	var minor_rivers : Array[River] = river_handler.handle_rivers(grid_width, grid_height, map_data, global_ocean, mask_data, noise_seed, res_scale)
+	var minor_rivers : Array[River] = river_handler.handle_rivers(world_data, grid_width, grid_height, map_data, global_ocean, mask_data, noise_seed, res_scale)
 	_rivers.append_array(minor_rivers)
 	mask_data["river"] = river_handler.create_full_river_mask(map_data["river"], grid_width, grid_height)
 	Profiler.start("Temperature Generation")
@@ -115,12 +116,12 @@ func update_map_visuals():
 	var img = Image.create(grid_width, grid_height, false, Image.FORMAT_RGBA8)
 	
 	# --- 1. SET TERRAIN / CLIMATE / HEIGHT PIXELS ---
-	if not map_data["terrain"].is_empty() and not mask_data["ocean"].is_empty():
-		for pos in map_data["terrain"]:
+	if not world_data.map_data["terrain"].is_empty() and not mask_data["ocean"].is_empty():
+		for pos in world_data.map_data["terrain"]:
 			if pos.x < 0 or pos.y < 0 or pos.x >= grid_width or pos.y >= grid_height:
 				continue
 			
-			var elevation = map_data["terrain"][pos]
+			var elevation = world_data.map_data["terrain"][pos]
 			var is_ocean = mask_data["ocean"].get(pos, false)
 			
 			var color: Color

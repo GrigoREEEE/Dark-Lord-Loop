@@ -22,6 +22,11 @@ class_name World_Data
 
 
 @export_category("South Islands Generation")
+
+@export var belt_height: int = 150
+@export var bottom_padding: int = 15
+@export var side_padding: int = 60
+
 @export var s_islands_frequency: Dictionary[String, float] = {
 	"terrain" : 0.02,
 	"detail" : 0.08,
@@ -31,6 +36,16 @@ class_name World_Data
 	"terrain" : 6,
 	"detail" : 3,
 	"shape" : 3
+}
+
+@export_category("Wall Generation")
+
+@export var wall_base_height = 15
+@export var wall_variance = 10
+
+@export var wall_frequency: Dictionary[String, float] = {
+	"shape" : 0.02,
+	"texture" : 0.05,
 }
 
 @export_category("River Generation")

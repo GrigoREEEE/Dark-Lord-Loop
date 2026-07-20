@@ -1,27 +1,29 @@
 extends Node
 class_name Terrain_Generator
 
-func generate_height_map(width: int, height: int, noise_seed : int, res_scale : float = 1) -> Dictionary[Vector2, float]:
-	var map_data: Dictionary[Vector2, float] = {}
+func generate_height_map(world_data: World_Data, noise_seed : int, res_scale : float = 1) -> void:
+	var width: int = world_data.grid_width
+	var height: int = world_data.grid_height
+	var terrain_data: Dictionary[Vector2, float] = {}
 
 	# --- 1. TERRAIN NOISE (Macro Hills & Valleys) ---
 	var terrain_noise = FastNoiseLite.new()
 	terrain_noise.seed = noise_seed
-	terrain_noise.frequency = 0.02 / res_scale
-	terrain_noise.fractal_octaves = 9 
+	terrain_noise.frequency = world_data.terrain_frequency["terrain"] / res_scale
+	terrain_noise.fractal_octaves = world_data.terrain_octaves["terrain"] 
 
-	# --- NEW: DETAIL NOISE (Micro-bumps to deflect rivers) ---
+	# --- 2. DETAIL NOISE (Micro-bumps to deflect rivers) ---
 	var detail_noise = FastNoiseLite.new()
 	detail_noise.seed = noise_seed + 100
 	# High frequency creates small, jagged bumps
-	detail_noise.frequency = 0.1 / res_scale 
-	detail_noise.fractal_octaves = 3
+	detail_noise.frequency = world_data.terrain_frequency["detail"] / res_scale 
+	detail_noise.fractal_octaves = world_data.terrain_octaves["detail"]
 
-	# --- 2. SHAPE NOISE ---
+	# --- 3. SHAPE NOISE ---
 	var shape_noise = FastNoiseLite.new()
 	shape_noise.seed = noise_seed + 50
-	shape_noise.frequency = 0.005 / res_scale
-	shape_noise.fractal_octaves = 3
+	shape_noise.frequency = world_data.terrain_frequency["shape"] / res_scale
+	shape_noise.fractal_octaves = world_data.terrain_octaves["shape"]
 
 	# --- PHASE 1: GENERATE CONTINENT ---
 	for x in range(width):
@@ -65,6 +67,6 @@ func generate_height_map(width: int, height: int, noise_seed : int, res_scale : 
 			final_elevation -= (1.0 - shape_mask) * 2.0
 			final_elevation = max(final_elevation, -1.0)
 			
-			map_data[Vector2(x, y)] = final_elevation
+			terrain_data[Vector2(x, y)] = final_elevation
 			
-	return map_data
+	world_data.map_data["terrain"] = terrain_data

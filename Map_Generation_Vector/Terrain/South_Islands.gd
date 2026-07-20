@@ -6,7 +6,13 @@ class_name South_Islands
 ########################################
 
 
-func apply_southern_islands(map_data: Dictionary, width: int, height: int, belt_height: int, bottom_padding: int, side_padding: int, noise_seed : int, res_scale : float = 1):
+func apply_southern_islands(world_data: World_Data, noise_seed : int, res_scale : float = 1) -> void:
+	var terrain_data: Dictionary = world_data.map_data["terrain"]
+	var width: int = world_data.grid_width
+	var height: int = world_data.grid_height
+	var belt_height: int = world_data.belt_height
+	var bottom_padding: int = world_data.bottom_padding
+	var side_padding: int = world_data.side_padding
 	
 	belt_height = int(belt_height * res_scale)
 	bottom_padding = int(bottom_padding * res_scale)
@@ -15,19 +21,18 @@ func apply_southern_islands(map_data: Dictionary, width: int, height: int, belt_
 	# 1. NOISE SETUP
 	var shape_noise = FastNoiseLite.new()
 	shape_noise.seed = noise_seed + 200
-	shape_noise.frequency = 0.015 / res_scale
-	shape_noise.fractal_octaves = 3 
+	shape_noise.frequency = world_data.s_islands_frequency["shape"]/ res_scale
+	shape_noise.fractal_octaves = world_data.s_islands_octaves["shape"]
 
 	var terrain_noise = FastNoiseLite.new()
 	terrain_noise.seed = noise_seed
-	terrain_noise.frequency = 0.02 / res_scale
-	terrain_noise.fractal_octaves = 6
-	
-	# --- NEW: MICRO-NOISE FOR DETAILS ---
+	terrain_noise.frequency = world_data.s_islands_frequency["terrain"] / res_scale
+	terrain_noise.fractal_octaves = world_data.s_islands_octaves["terrain"]
+
 	var detail_noise = FastNoiseLite.new()
 	detail_noise.seed = noise_seed + 300
-	detail_noise.frequency = 0.08 / res_scale # High frequency for micro-bumps
-	detail_noise.fractal_octaves = 3
+	detail_noise.frequency = world_data.s_islands_frequency["detail"] / res_scale # High frequency for micro-bumps
+	detail_noise.fractal_octaves = world_data.s_islands_octaves["terrain"]
 	
 	var belt_end_y = height - bottom_padding
 	var belt_start_y = belt_end_y - belt_height
@@ -78,7 +83,7 @@ func apply_southern_islands(map_data: Dictionary, width: int, height: int, belt_
 			
 			# --- THRESHOLD CHECK ---
 			if elevation > 0.12:
-				var existing_height = map_data.get(pos, -1.0)
-				map_data[pos] = max(existing_height, elevation)
+				var existing_height = terrain_data.get(pos, -1.0)
+				terrain_data[pos] = max(existing_height, elevation)
 				
-	return map_data
+	world_data.map_data["terrain"] = terrain_data
