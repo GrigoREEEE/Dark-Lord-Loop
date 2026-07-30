@@ -4,16 +4,17 @@ class_name Source_Selection
 # - min_x, max_x, min_y, max_y: The boundaries of the cell on the map grid.
 # - elevation_power: Higher values make the top end of the valid range exponentially more likely.
 func select_river_source(
-	map_data: Dictionary, 
-	ocean_mask: Dictionary, 
-	data: Dictionary[String, int],
-	noise_seed: int,
+	world_data: World_Data,
+	cell_data: Dictionary[String, int],
 	elevation_power: float = 5.0
 ) -> Vector2:
-	var min_x: int = data["start_x"]
-	var max_x: int = data["end_x"]
-	var min_y: int = data["start_y"]
-	var max_y: int = data["end_y"]
+	var noise_seed: int = world_data.noise_seed
+	var terrain: Dictionary = world_data.map_data["terrain"]
+	var ocean_mask: Dictionary = world_data.mask_data["ocean"]
+	var min_x: int = cell_data["start_x"]
+	var max_x: int = cell_data["end_x"]
+	var min_y: int = cell_data["start_y"]
+	var max_y: int = cell_data["end_y"]
 	var valid_cells: Array[Dictionary] = []
 	var total_weight: float = 0.0
 	
@@ -26,11 +27,11 @@ func select_river_source(
 			if ocean_mask.has(pos):
 				continue
 				
-			# Check 2: Must exist in map data
-			if not map_data.has(pos):
+			# Check 2: Must exist in map cell_data
+			if not terrain.has(pos):
 				continue
 				
-			var elevation: float = map_data[pos]
+			var elevation: float = terrain[pos]
 			
 			# Check 3: Prevent rivers from spawning directly on the beach/marsh
 			if elevation < 0.2:

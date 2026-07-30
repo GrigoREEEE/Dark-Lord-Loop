@@ -1,5 +1,4 @@
 extends Node
-
 class_name River_Widener
 
 var flood_cost_base: float = 1.0
@@ -8,14 +7,13 @@ var flood_distance_cost: float = 0.3
 var climb_tolerance: float = 0.01
 
 # Widens the river using an "Iterative Round-Robin" approach.
-# - Mouth segments gain EXPONENTIAL flow towards the ocean.
-# - Cells <= 0.07 height are flooded for FREE (0 cost).
+# - The river naturally gets slightly wider downstream via flow_increment.
+# - Cells <= 0.12 height get a slight cost discount.
 func widen_river_iterative(
 	world_data: World_Data,
 	river: River,
-	mouth_segments : int,
 	base_flow_gain: float, 
-	flow_increment: float, 
+	flow_increment: float 
 ):
 	
 	river.segment_flow.clear()
@@ -23,10 +21,9 @@ func widen_river_iterative(
 	# --- 1. PRE-CALCULATE BUDGETS ---
 	var segment_budgets: Array[float] = []
 	var total_segments = river.segments.size()
-	var start_of_mouth = max(0, total_segments - mouth_segments)
 	
 	for i in range(total_segments):
-		var is_mouth = i >= start_of_mouth
+		# The budget still grows linearly downstream, but no exponential mouth explosion
 		var budget = base_flow_gain + (float(i) * flow_increment)
 		
 		segment_budgets.append(budget)
@@ -45,7 +42,7 @@ func widen_river_iterative(
 	
 	var segment_data_cache = []
 	for i in range(river.segments.size()):
-		var region: Region = river.segments[i] # Now accessing the Region object
+		var region: Region = river.segments[i]
 		var core_cells: Array[Vector2] = []
 		
 		# Loop through the Region's points
@@ -79,7 +76,6 @@ func widen_river_iterative(
 				
 			var region: Region = river.segments[i]
 			var seg_data = segment_data_cache[i]
-			var is_mouth = i >= start_of_mouth
 			
 			var candidates = []
 			var candidate_set = {}
@@ -98,7 +94,6 @@ func widen_river_iterative(
 					var target_height = world_data.map_data["terrain"][neighbor]
 					var cost = 0.0
 					
-					# FREE FLOODING for lowlands (lakes/depressions)
 					var effective_base = flood_cost_base
 					var effective_dist = flood_distance_cost
 						
@@ -106,11 +101,6 @@ func widen_river_iterative(
 					if target_height <= 0.12:
 						effective_base *= 0.8 
 						effective_dist *= 0.8
-						
-					# Mouth Distance Discount
-					if is_mouth:
-						effective_dist *= 0.05
-						effective_base *= 0.01
 						
 					cost = effective_base
 						
@@ -128,7 +118,7 @@ func widen_river_iterative(
 						
 					candidates.append({ "pos": neighbor, "cost": cost })
 					candidate_set[neighbor] = true
-			
+		
 			# C. ATTEMPT TO WIDEN
 			if candidates.is_empty():
 				segment_budgets[i] = -1.0

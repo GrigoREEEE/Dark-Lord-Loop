@@ -6,13 +6,15 @@ class_name South_Islands
 ########################################
 
 
-func apply_southern_islands(world_data: World_Data, noise_seed : int, res_scale : float = 1) -> void:
+func apply_southern_islands(world_data: World_Data) -> void:
 	var terrain_data: Dictionary = world_data.map_data["terrain"]
 	var width: int = world_data.grid_width
 	var height: int = world_data.grid_height
 	var belt_height: int = world_data.belt_height
 	var bottom_padding: int = world_data.bottom_padding
 	var side_padding: int = world_data.side_padding
+	var noise_seed : int = world_data.noise_seed
+	var res_scale : float = world_data.res_scale
 	
 	belt_height = int(belt_height * res_scale)
 	bottom_padding = int(bottom_padding * res_scale)

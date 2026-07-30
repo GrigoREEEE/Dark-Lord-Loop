@@ -4,4 +4,6 @@
 
 [resource]
 script = ExtResource("1_al0fy")
+grid_width = 1200
+grid_height = 1800
 metadata/_custom_type_script = "uid://bhv3stpv347wb"

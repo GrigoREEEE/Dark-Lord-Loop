@@ -23,11 +23,11 @@ enum MapDisplayMode {
 var current_river_mode: RiverDisplayMode = RiverDisplayMode.NORMAL
 
 # CONFIGURATION
-@export var noise_seed: int
-@export var reference_width = 400.0
-@export var cell_size: int = 1
-@export var grid_width: int = 400
-@export var grid_height: int = 600
+#@export var noise_seed: int
+#@export var reference_width = 400.0
+#@export var cell_size: int = 1
+#@export var grid_width: int = 400
+#@export var grid_height: int = 600
 
 # Water_Display
 @export var water_level: float = 0.15 # Elevations below this are drawn as water
@@ -40,39 +40,40 @@ var lake_data: Dictionary[Vector2, Region] = {}
 var global_water_data: Dictionary[Vector2, Region] = {}
 var _rivers: Array[River] = []
 # --- Mask Holders ---
-var _ocean_mask: Dictionary[Vector2, bool] = {} 
-var _beach_mask: Dictionary[Vector2, bool] = {} 
-var _delta_mask: Dictionary[Vector2, bool] = {} 
-var _river_mask : Dictionary[Vector2, bool] = {} 
-var _outer_valley_mask : Dictionary[Vector2, bool] = {}
-var _lake_mask : Dictionary[Vector2, bool] = {}
+#var _ocean_mask: Dictionary[Vector2, bool] = {} 
+#var _beach_mask: Dictionary[Vector2, bool] = {} 
+#var _delta_mask: Dictionary[Vector2, bool] = {} 
+#var _river_mask : Dictionary[Vector2, bool] = {} 
+#var _outer_valley_mask : Dictionary[Vector2, bool] = {}
+#var _lake_mask : Dictionary[Vector2, bool] = {}
 
 
-var map_data : Dictionary[String, Dictionary] = {
-	"terrain": {},
-	"temperature": {},
-	"river": {},
-	"lake": {}
-}
-
-var mask_data: Dictionary[String, Dictionary] ={
-	"ocean": {},
-	"beach": {},
-	"delta": {},
-	"river": {},
-	"vally_outer": {},
-	"lake": {}
-}
+#var map_data : Dictionary[String, Dictionary] = {
+	#"terrain": {},
+	#"temperature": {},
+	#"river": {},
+	#"lake": {}
+#}
+#
+#var mask_data: Dictionary[String, Dictionary] ={
+	#"ocean": {},
+	#"beach": {},
+	#"delta": {},
+	#"river": {},
+	#"vally_outer": {},
+	#"lake": {}
+#}
 
 func _ready():
-	reference_width = 400
-	noise_seed = 1599947545 #randi() # 177024239 #randi() #58196215 #randi() #663202794#
-	print("Noise seed is: %s" % noise_seed)
+	#reference_width = 400
+	var noise_seed = 1599947545 #randi() # 177024239 #randi() #58196215 #randi() #663202794#
+	#print("Noise seed is: %s" % noise_seed)
 	
 	var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	var _winding_noise: FastNoiseLite = FastNoiseLite.new()
 	world_data = load("res://Map/World_Data.tres")
-	var res_scale = int(grid_width/reference_width)
+	world_data.res_scale = int(world_data.grid_width/world_data.reference_width)
+	world_data.noise_seed = noise_seed
 	#Profiler.start("total terrain generation")
 	var climate_gen: Climate_Generator = Climate_Generator.new()
 	var world_gen: Terrain_Generator = Terrain_Generator.new()
@@ -81,31 +82,34 @@ func _ready():
 	var ocean_id: Ocean_Identification = Ocean_Identification.new()
 	var beach_id: Beach_Identification = Beach_Identification.new()
 	var river_handler : River_Handler = River_Handler.new()
+	
 	var global_ocean: Water_Pool = Water_Pool.new()
 	global_ocean.type = "Ocean"
+	world_data.ocean = global_ocean
 	Profiler.start("Terrain Generation")
-	world_gen.generate_height_map(world_data, noise_seed, res_scale)
-	south_islands.apply_southern_islands(world_data, noise_seed, res_scale)
-	world_data.map_data["terrain"] = ice_wall.apply_ice_wall(world_data.map_data["terrain"], grid_width, noise_seed, res_scale)
-	#Profiler.end("total terrain generation")
+	world_gen.generate_height_map(world_data)
+	south_islands.apply_southern_islands(world_data)
+	ice_wall.apply_ice_wall(world_data)
+	Profiler.end("total terrain generation")
 	world_data.map_data["terrain"]= world_data.map_data["terrain"]
 	Profiler.end("Terrain Generation")
 	Profiler.start("Beach and Mask Generation")
 	# Check where the ocean abd the beach are
-	world_data.mask_data["ocean"] = ocean_id.ocean_vs_land(world_data.map_data["terrain"], grid_width, grid_height, global_ocean)
-	world_data.mask_data["beach"] = beach_id.generate_beach_mask(world_data.mask_data["ocean"], grid_width, grid_height, 5, res_scale)
+	ocean_id.ocean_vs_land(world_data)
+	beach_id.generate_beach_mask(world_data)
 	Profiler.end("Beach and Mask Generation")
 
 	
-	var main_river : River = river_handler.setup_river("main", world_data, grid_width, grid_height, map_data, global_ocean, mask_data, {}, noise_seed, res_scale)
+	var main_river : River = river_handler.setup_river("main", world_data, {})
 	_rivers.append(main_river)
-	var minor_rivers : Array[River] = river_handler.handle_rivers(world_data, grid_width, grid_height, map_data, global_ocean, mask_data, noise_seed, res_scale)
-	_rivers.append_array(minor_rivers)
-	mask_data["river"] = river_handler.create_full_river_mask(map_data["river"], grid_width, grid_height)
-	Profiler.start("Temperature Generation")
-	#temperature_data = climate_gen.generate_temperatures(map_data["terrain"], mask_data)
-	#map_data["temperature"] = temperature_data
-	Profiler.end("Temperature Generation")
+	#var minor_rivers : Array[River] = river_handler.handle_rivers(world_data, grid_width, grid_height, map_data, global_ocean, mask_data, noise_seed, res_scale)
+	#_rivers.append_array(minor_rivers)
+	#mask_data["river"] = river_handler.create_full_river_mask(map_data["river"], grid_width, grid_height)
+	#Profiler.start("Temperature Generation")
+	##temperature_data = climate_gen.generate_temperatures(map_data["terrain"], mask_data)
+	##map_data["temperature"] = temperature_data
+	#Profiler.end("Temperature Generation")
+
 	update_map_visuals()
 
 # Cache the texture so we don't regenerate it every frame
@@ -113,21 +117,21 @@ var _map_texture: ImageTexture
 
 func update_map_visuals():
 	# 1. Create a blank image buffer
-	var img = Image.create(grid_width, grid_height, false, Image.FORMAT_RGBA8)
+	var img = Image.create(world_data.grid_width, world_data.grid_height, false, Image.FORMAT_RGBA8)
 	
 	# --- 1. SET TERRAIN / CLIMATE / HEIGHT PIXELS ---
-	if not world_data.map_data["terrain"].is_empty() and not mask_data["ocean"].is_empty():
+	if not world_data.map_data["terrain"].is_empty() and not world_data.mask_data["ocean"].is_empty():
 		for pos in world_data.map_data["terrain"]:
-			if pos.x < 0 or pos.y < 0 or pos.x >= grid_width or pos.y >= grid_height:
+			if pos.x < 0 or pos.y < 0 or pos.x >= world_data.grid_width or pos.y >= world_data.grid_height:
 				continue
 			
 			var elevation = world_data.map_data["terrain"][pos]
-			var is_ocean = mask_data["ocean"].get(pos, false)
+			var is_ocean = world_data.mask_data["ocean"].get(pos, false)
 			
 			var color: Color
 			
 			if current_map_mode == MapDisplayMode.TERRAIN:
-				var is_real_beach = mask_data["beach"].get(pos, false) or mask_data["delta"].get(pos, false)
+				var is_real_beach = world_data.mask_data["beach"].get(pos, false) or world_data.mask_data["delta"].get(pos, false)
 				color = _get_layered_color(elevation, is_ocean, is_real_beach)
 			elif current_map_mode == MapDisplayMode.HEIGHT_MAP:
 				color = _get_height_color(elevation)
@@ -155,7 +159,7 @@ func update_map_visuals():
 							
 							# Iterate through the Region's points array
 							for pos in region.points:
-								if pos.x >= 0 and pos.y >= 0 and pos.x < grid_width and pos.y < grid_height:
+								if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
 									img.set_pixel(int(pos.x), int(pos.y), draw_color)
 					else:
 						_draw_simple_river_path(img, river, Color.RED)
@@ -165,7 +169,7 @@ func update_map_visuals():
 						for region: Region in river.segments: # Type hint as Region
 							# Iterate through the Region's points array
 							for pos in region.points:
-								if pos.x >= 0 and pos.y >= 0 and pos.x < grid_width and pos.y < grid_height:
+								if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
 									img.set_pixel(int(pos.x), int(pos.y), base_river_color)
 					else:
 						_draw_simple_river_path(img, river, base_river_color)
@@ -197,12 +201,12 @@ func _get_height_color(e: float) -> Color:
 # --- Helper to avoid code duplication ---
 func _draw_simple_river_path(img: Image, river, color: Color):
 	for pos in river.river_path:
-		if pos.x >= 0 and pos.y >= 0 and pos.x < grid_width and pos.y < grid_height:
+		if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
 			img.set_pixel(int(pos.x), int(pos.y), color)
 
 func _draw():
 	if _map_texture:
-		draw_texture_rect(_map_texture, Rect2(0, 0, grid_width * cell_size, grid_height * cell_size), false)
+		draw_texture_rect(_map_texture, Rect2(0, 0, world_data.grid_width * world_data.cell_size, world_data.grid_height * world_data.cell_size), false)
 
 func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
 	if is_ocean:
@@ -244,24 +248,24 @@ func _unhandled_input(event: InputEvent):
 			var local_mouse_pos = get_local_mouse_position()
 			
 			# Convert screen pixels to map grid coordinates
-			var grid_x = int(local_mouse_pos.x / cell_size)
-			var grid_y = int(local_mouse_pos.y / cell_size)
+			var grid_x = int(local_mouse_pos.x / world_data.cell_size)
+			var grid_y = int(local_mouse_pos.y / world_data.cell_size)
 			var grid_pos = Vector2(grid_x, grid_y)
 			
 			# Ensure we clicked INSIDE the map boundaries
-			if grid_x >= 0 and grid_x < grid_width and grid_y >= 0 and grid_y < grid_height:
+			if grid_x >= 0 and grid_x < world_data.grid_width and grid_y >= 0 and grid_y < world_data.grid_height:
 				
 				# Fetch elevation for extra debugging info
 				var elevation = "N/A"
-				if not map_data["terrain"].is_empty() and map_data["terrain"].has(grid_pos):
-					elevation = str(snapped(map_data["terrain"][grid_pos], 0.0001))
+				if not world_data.map_data["terrain"].is_empty() and world_data.map_data["terrain"].has(grid_pos):
+					elevation = str(snapped(world_data.map_data["terrain"][grid_pos], 0.0001))
 				
 				# Print to the Output console
 				print("📍 Map Clicked - Grid Pos: ", grid_pos, " | Elevation: ", elevation)
 				
 # Retrieves the elevation data for a specific X, Y coordinate.
 # Returns the elevation as a float, or -1.0 if the cell doesn't exist.
-func get_elevation_at(map_data: Dictionary, x: int, y: int) -> float:
+func get_elevation_at(map_data, x: int, y: int) -> float:
 	var pos := Vector2(x, y)
 	
 	# Check if the coordinate actually exists in our generated map

@@ -3,20 +3,43 @@ class_name World_Data
 
 @export_category("Size, Seed, Noise")
 @export var noise_seed: int
-@export var reference_width = 400.0
+@export var reference_width : float = 400.0
+@export var res_scale : float = 1
 @export var cell_size: int = 1
 @export var grid_width: int = 400
 @export var grid_height: int = 600
 
 @export_category("Terrain Generation")
+# FREQUENCY controls the "zoom level" or scale of the noise patterns.
+# - INCREASING it zooms OUT: Features become smaller, more frequent, and tightly packed.
+# - DECREASING it zooms IN: Features become larger, wider, and more spread out.
 @export var terrain_frequency: Dictionary[String, float] = {
-	"terrain" : 0.02,
+	# Macro Elevation (Hills, Valleys, Mountains)
+	# UP: Mountain ranges and valleys become small, cramped, and chaotic.
+	# DOWN: Creates massive, sweeping continental plains and wide, spanning mountain ranges.
+	"terrain" : 0.015,
+	# Micro-Bumps (Used for surface roughness and river deflection)
+	# UP: The surface becomes covered in tiny, frequent, sharp spikes (like gravel).
+	# DOWN: The micro-details smooth out into gentle, subtle undulations.
 	"detail" : 0.1,
-	"shape" : 0.05
+	# Continental Outline & Domain Warping
+	# UP: The main landmass shatters into many small, chaotic islands and jagged peninsulas.
+	# DOWN: The continent merges into a single, cohesive, massive blob of land.
+	"shape" : 0.02
 }
+
+# OCTAVES control the fractal complexity (how many layers of noise are stacked together).
+# - INCREASING it adds detail: Shapes become rougher, craggier, and more jagged (costs more performance).
+# - DECREASING it removes detail: Shapes become smoother, rounder, and softer.
 @export var terrain_octaves: Dictionary[String, int] = {
-	"terrain" : 9,
+	# Main Elevation Roughness
+	# Lowering this toward 1-3 turns your craggy mountains into smooth, rolling hills.
+	"terrain" : 6,
+	# Micro-Bump Complexity
+	# Increasing this turns the micro-bumps into unpredictable, static-like noise.
 	"detail" : 3,
+	# Coastline & Shape Complexity
+	# Increasing this makes coastlines incredibly fractured and fractal (e.g., highly complex fjords).
 	"shape" : 3
 }
 
@@ -28,9 +51,9 @@ class_name World_Data
 @export var side_padding: int = 60
 
 @export var s_islands_frequency: Dictionary[String, float] = {
-	"terrain" : 0.02,
-	"detail" : 0.08,
-	"shape" : 0.015
+	"terrain" : 0.03,
+	"detail" : 0.1,
+	"shape" : 0.02
 }
 @export var s_islands_octaves: Dictionary[String, int] = {
 	"terrain" : 6,
@@ -80,11 +103,21 @@ class_name World_Data
 
 
 @export_category("Masks")
+@export var beach_distance: int = 5
 @export var mask_data: Dictionary[String, Dictionary] ={
 	"ocean": {},
 	"beach": {},
 	"delta": {},
 	"river": {},
-	"vally_outer": {},
+	"valley_outer": {},
 	"lake": {}
 }
+
+@export_category("Ocean")
+
+var ocean: Water_Pool # World ocean
+
+@export_category("River_System")
+var main_river: River # Main river
+var _rivers: Array[River] = [] # An array of all major rivers.
+var _river_system: Array[Region] # All regions that are part of the river

@@ -60,57 +60,7 @@ func _build_and_link_region(points: Array[Vector2], prev_region: Region) -> Regi
 	
 	return new_region
 
-# Merges the last 'n' regions and then chops them into smaller Region chunks.
-# Returns the number of NEW regions created (useful for updating 'mouth_segments' counts).
-func resegment_delta(n_segments_from_end: int, target_chunk_size: int) -> int:
-	if segments.size() < n_segments_from_end:
-		return 0 # Not enough segments to process
 
-	# 1. IDENTIFY & MERGE
-	var start_index = segments.size() - n_segments_from_end
-	var combined_cells: Array[Vector2] = []
-	
-	# Collect all cells from the target regions' points array
-	for i in range(start_index, segments.size()):
-		combined_cells.append_array(segments[i].points)
-	
-	# Identify the last surviving region of the river (if there is one)
-	# We need this to attach our newly chopped delta back to the main river.
-	var previous_region: Region = null
-	if start_index > 0:
-		previous_region = segments[start_index - 1]
-	
-	# 2. REMOVE OLD REGIONS & CLEAN CONNECTIONS
-	for k in range(n_segments_from_end):
-		var popped_region = segments.pop_back()
-		
-		# Break the forward link from the surviving river to the deleted segments
-		if previous_region != null and previous_region.regions_connect.has(popped_region):
-			previous_region.regions_connect.erase(popped_region)
-			
-	# 3. CHOP INTO NEW CHUNKS
-	var current_idx = 0
-	var total_cells = combined_cells.size()
-	var new_segments_count = 0
-	
-	while current_idx < total_cells:
-		# Determine the slice end
-		var end_idx = min(current_idx + target_chunk_size, total_cells)
-		
-		# Extract the slice
-		var new_chunk: Array[Vector2] = combined_cells.slice(current_idx, end_idx)
-		
-		# Build the new Region and link it!
-		# Passing 'previous_region' automatically hooks it up to the chain.
-		previous_region = _build_and_link_region(new_chunk, previous_region)
-		
-		# Optional: Override the subtype so you know these are delta segments
-		previous_region.subtype = "River Delta Segment"
-		
-		new_segments_count += 1
-		current_idx += target_chunk_size
-		
-	return new_segments_count
 
 # Removes river cells from the last Region if they overlap with the ocean mask.
 # This fixes "spilling" where the river widening algorithm floods the ocean itself.
@@ -143,48 +93,140 @@ func clean_river_mouth(river: River, ocean_mask: Dictionary):
 		if not river.segments.is_empty():
 			var new_last_region = river.segments.back()
 			new_last_region.regions_connect.erase(dead_region)
-	
-# Combines the last 'n' regions of the river into a single "Delta Region".
-func merge_segments(n_segments_to_merge: int):
-	# We require at least n + 1 segments so there is still a river left after making the delta!
-	if self.segments.size() < n_segments_to_merge + 1:
-		return 
-		
-	var delta_points: Array[Vector2] = []
-	var popped_regions: Array[Region] = []
-	
-	# 1. Collect all points from the last N regions and remove them
-	# We iterate backwards to pop them off easily
-	for k in range(n_segments_to_merge):
-		var popped_region = self.segments.pop_back()
-		delta_points.append_array(popped_region.points)
-		popped_regions.append(popped_region)
-		
-	# 2. Identify the surviving upstream region and clean up connections
-	var previous_region: Region = null
-	if not self.segments.is_empty():
-		previous_region = self.segments.back()
-		
-		# Break the old forward connection to the deleted regions
-		for popped in popped_regions:
-			if previous_region.regions_connect.has(popped):
-				previous_region.regions_connect.erase(popped)
 
-	# 3. Create the new combined Delta Region
-	var delta_region = Region.new()
-	delta_region.associated_water = self
-	delta_region.id = randi()
-	delta_region.type = "Water"
-	delta_region.subtype = "River Delta"
-	delta_region.points = delta_points
-	delta_region.size = delta_points.size()
-	
-	# 4. Link the new Delta to the surviving main river
-	if previous_region != null:
-		previous_region.regions_connect.append(delta_region)
-		delta_region.regions_connect.append(previous_region)
+# Merges the last segment into the previous one if it is smaller than the threshold
+func merge_short_tail_segment(threshold: int = 10) -> void:
+	if segments.size() < 2:
+		return # Not enough segments to merge
 		
-	# 5. Add the combined cluster back as a single segment
-	self.segments.append(delta_region)
+	var last_segment: Region = segments.back()
 	
-	print("Delta Region created. River now has ", self.segments.size(), " segments.")
+	if last_segment.size < threshold:
+		# Remove the tiny segment from the array
+		segments.pop_back()
+		var prev_segment: Region = segments.back()
+		
+		# 1. Transfer the points
+		prev_segment.points.append_array(last_segment.points)
+		prev_segment.size = prev_segment.points.size()
+		
+		# 2. Break the link to the deleted segment
+		prev_segment.regions_connect.erase(last_segment)
+		
+		# 3. (Safety) Transfer any forward connections the tiny segment might have had
+		for conn in last_segment.regions_connect:
+			if conn != prev_segment:
+				prev_segment.regions_connect.append(conn)
+				
+				# Update the other region's back-link
+				conn.regions_connect.erase(last_segment)
+				if not conn.regions_connect.has(prev_segment):
+					conn.regions_connect.append(prev_segment)
+					
+		# print("Merged short tail segment of size ", last_segment.size, " into prev
+		
+# Erases the last N cells of the physical river path.
+# Call this BEFORE generating a delta so the delta has room to grow!
+func backtrack_path_for_delta(distance_to_backtrack: int) -> void:
+	if river_path.size() > distance_to_backtrack + 1:
+		# Slice the array to remove the end
+		river_path = river_path.slice(0, river_path.size() - distance_to_backtrack)
+		# Update the mouth to the new end position
+		mouth = river_path.back()
+		
+## Combines the last 'n' regions of the river into a single "Delta Region".
+#func merge_segments(n_segments_to_merge: int):
+	## We require at least n + 1 segments so there is still a river left after making the delta!
+	#if self.segments.size() < n_segments_to_merge + 1:
+		#return 
+		#
+	#var delta_points: Array[Vector2] = []
+	#var popped_regions: Array[Region] = []
+	#
+	## 1. Collect all points from the last N regions and remove them
+	## We iterate backwards to pop them off easily
+	#for k in range(n_segments_to_merge):
+		#var popped_region = self.segments.pop_back()
+		#delta_points.append_array(popped_region.points)
+		#popped_regions.append(popped_region)
+		#
+	## 2. Identify the surviving upstream region and clean up connections
+	#var previous_region: Region = null
+	#if not self.segments.is_empty():
+		#previous_region = self.segments.back()
+		#
+		## Break the old forward connection to the deleted regions
+		#for popped in popped_regions:
+			#if previous_region.regions_connect.has(popped):
+				#previous_region.regions_connect.erase(popped)
+#
+	## 3. Create the new combined Delta Region
+	#var delta_region = Region.new()
+	#delta_region.associated_water = self
+	#delta_region.id = randi()
+	#delta_region.type = "Water"
+	#delta_region.subtype = "River Delta"
+	#delta_region.points = delta_points
+	#delta_region.size = delta_points.size()
+	#
+	## 4. Link the new Delta to the surviving main river
+	#if previous_region != null:
+		#previous_region.regions_connect.append(delta_region)
+		#delta_region.regions_connect.append(previous_region)
+		#
+	## 5. Add the combined cluster back as a single segment
+	#self.segments.append(delta_region)
+	#
+	#print("Delta Region created. River now has ", self.segments.size(), " segments.")
+
+## Merges the last 'n' regions and then chops them into smaller Region chunks.
+## Returns the number of NEW regions created (useful for updating 'mouth_segments' counts).
+#func resegment_delta(n_segments_from_end: int, target_chunk_size: int) -> int:
+	#if segments.size() < n_segments_from_end:
+		#return 0 # Not enough segments to process
+#
+	## 1. IDENTIFY & MERGE
+	#var start_index = segments.size() - n_segments_from_end
+	#var combined_cells: Array[Vector2] = []
+	#
+	## Collect all cells from the target regions' points array
+	#for i in range(start_index, segments.size()):
+		#combined_cells.append_array(segments[i].points)
+	#
+	## Identify the last surviving region of the river (if there is one)
+	## We need this to attach our newly chopped delta back to the main river.
+	#var previous_region: Region = null
+	#if start_index > 0:
+		#previous_region = segments[start_index - 1]
+	#
+	## 2. REMOVE OLD REGIONS & CLEAN CONNECTIONS
+	#for k in range(n_segments_from_end):
+		#var popped_region = segments.pop_back()
+		#
+		## Break the forward link from the surviving river to the deleted segments
+		#if previous_region != null and previous_region.regions_connect.has(popped_region):
+			#previous_region.regions_connect.erase(popped_region)
+			#
+	## 3. CHOP INTO NEW CHUNKS
+	#var current_idx = 0
+	#var total_cells = combined_cells.size()
+	#var new_segments_count = 0
+	#
+	#while current_idx < total_cells:
+		## Determine the slice end
+		#var end_idx = min(current_idx + target_chunk_size, total_cells)
+		#
+		## Extract the slice
+		#var new_chunk: Array[Vector2] = combined_cells.slice(current_idx, end_idx)
+		#
+		## Build the new Region and link it!
+		## Passing 'previous_region' automatically hooks it up to the chain.
+		#previous_region = _build_and_link_region(new_chunk, previous_region)
+		#
+		## Optional: Override the subtype so you know these are delta segments
+		#previous_region.subtype = "River Delta Segment"
+		#
+		#new_segments_count += 1
+		#current_idx += target_chunk_size
+		#
+	#return new_segments_count

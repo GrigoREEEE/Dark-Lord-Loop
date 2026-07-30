@@ -8,16 +8,17 @@ class_name River_Generator
 # - start_pos: Pixel coordinate where the river begins.
 # - target_dir: The general "Gravity" direction (e.g., Vector2.RIGHT for West->East).
 func generate_natural_river(
-	width: int, 
-	height: int, 
-	ocean: Water_Pool, 
-	river_data: Dictionary, 
-	noise_seed: int, 
+	world_data: World_Data,
 	start_pos: Vector2,
 	target_dir: Vector2,
-	res_scale: float = 1.0
-) -> River:
-	
+	) -> River:
+		
+	var width: int = world_data.grid_width
+	var height: int = world_data.grid_height
+	var ocean: Water_Pool = world_data.ocean
+	var river_data: Dictionary = world_data.map_data["river"]
+	var noise_seed: int = world_data.noise_seed
+	var res_scale: float = world_data.res_scale
 	var river = River.new()
 	river.id = "RI" + str(randi() % 9999).pad_zeros(4)
 	river.river_type = "Natural"

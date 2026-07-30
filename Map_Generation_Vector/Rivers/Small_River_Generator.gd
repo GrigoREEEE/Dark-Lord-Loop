@@ -13,25 +13,25 @@ const DIRECTIONS: Array[Vector2] = [
 # Generates a natural river flowing via steepest descent.
 # Ends when it hits the Ocean, a Lake, a Delta, an existing River, or a local pit.
 func generate_small_natural_river(
-	width: int, 
-	height: int, 
-	ocean: Water_Pool, 
-	terrain_data: Dictionary, 
-	mask_data: Dictionary,
-	river_data: Dictionary, # Mapping Vector2 -> Region for collision linking
+	world_data: World_Data,
 	start_pos: Vector2
 ) -> River:
-	
+	var width: int = world_data.grid_width
+	var height: int = world_data.grid_height
+	var ocean: Water_Pool = world_data.ocean
+	var river_data: Dictionary = world_data.map_data["river"]
+	var terrain_data: Dictionary = world_data.map_data["terrain"]
 	var river = River.new()
 	river.id = "RI" + str(randi() % 9999).pad_zeros(4)
 	river.river_type = "Natural"
 	river.source = start_pos
 	
+	
 	# Extract masks for fast collision detection
-	var ocean_mask: Dictionary = mask_data.get("ocean", {})
-	var river_mask: Dictionary = mask_data.get("river", {})
-	var lake_mask: Dictionary = mask_data.get("lake", {})
-	var delta_mask: Dictionary = mask_data.get("delta", {})
+	var ocean_mask: Dictionary = world_data.mask_data.get("ocean", {})
+	var river_mask: Dictionary = world_data.mask_data.get("river", {})
+	var lake_mask: Dictionary = world_data.mask_data.get("lake", {})
+	var delta_mask: Dictionary = world_data.mask_data.get("delta", {})
 	
 	var current_pos: Vector2 = start_pos
 	

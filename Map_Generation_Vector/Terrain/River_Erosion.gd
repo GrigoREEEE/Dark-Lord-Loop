@@ -11,19 +11,20 @@ class_name River_Erosion
 # - x_cells_threshold: After this many cells, adjacent banks are strictly capped.
 # - water_level: A safety floor to prevent the algorithm from filling in the ocean.
 func apply_target_height_erosion(
-	map_data: Dictionary, 
-	valley_mask: Dictionary, 
-	_ocean_mask: Dictionary[Vector2, bool],
+	world_data: World_Data,
 	target_height: float,
-	erosion_data : Dictionary[String, float],
 	river_path_size: int,
 	x_cells_threshold: int = 10,
 	water_level: float = -0.5
 ):
-	var start_radius: float = erosion_data["start radius"]
-	var end_radius: float = erosion_data["end radius"]
-	var start_strength: float = erosion_data["start erosion"]
-	var end_strength: float = erosion_data["end erosion"]
+	var map_data: Dictionary = world_data.map_data["terrain"]
+	var valley_mask: Dictionary = world_data.mask_data["valley_outer"]
+	var _ocean_mask: Dictionary = world_data.mask_data["ocean"]
+
+	var start_radius: float = world_data.main_river_erosion["start radius"]
+	var end_radius: float = world_data.main_river_erosion["end radius"]
+	var start_strength: float = world_data.main_river_erosion["start erosion"]
+	var end_strength: float = world_data.main_river_erosion["end erosion"]
 
 	for cell: Vector2 in valley_mask:
 		if not map_data.has(cell):

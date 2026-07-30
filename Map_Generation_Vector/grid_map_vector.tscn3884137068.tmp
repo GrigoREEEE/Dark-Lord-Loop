@@ -9,6 +9,9 @@ texture_filter = 2
 script = ExtResource("1_1e54l")
 river_mode_selector = NodePath("Map_UI/RiverModeSelector")
 save_button = NodePath("Map_UI/SaveButton")
+noise_seed = 100
+grid_width = 1200
+grid_height = 1800
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=719009694]
 position = Vector2(576, 324)
@@ -25,10 +28,10 @@ Y_input = NodePath("VBoxContainer/HBoxContainer/Y")
 map = NodePath("..")
 
 [node name="RiverModeSelector" type="OptionButton" parent="Map_UI" unique_id=1384297460]
-offset_left = 46.0
-offset_top = 2.0
-offset_right = 86.0
-offset_bottom = 22.0
+offset_left = 973.0
+offset_top = 1.0
+offset_right = 1005.0
+offset_bottom = 21.0
 metadata/_edit_use_anchors_ = true
 
 [node name="Climate_Terrain" type="OptionButton" parent="Map_UI" unique_id=994605716]

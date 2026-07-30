@@ -5,9 +5,11 @@ class_name Ice_Wall
 ######### Icewall Generation ###########
 ########################################
 
-func apply_ice_wall(world_data: World_Data, noise_seed : int, res_scale : float = 1):
+func apply_ice_wall(world_data: World_Data) -> void:
 	var terrain_data: Dictionary = world_data.map_data["terrain"]
 	var width: int = world_data.grid_width
+	var noise_seed : int = world_data.noise_seed
+	var res_scale : float = world_data.res_scale
 	
 	var wall_base_height = int(world_data.wall_base_height * res_scale)
 	var wall_variance = int(world_data.wall_variance * res_scale)
@@ -37,4 +39,4 @@ func apply_ice_wall(world_data: World_Data, noise_seed : int, res_scale : float 
 			# This simply overwrites whatever land/ocean was generated there
 			terrain_data[Vector2(x, y)] = wall_elevation
 			
-	return terrain_data
+	world_data.map_data["terrain"] = terrain_data

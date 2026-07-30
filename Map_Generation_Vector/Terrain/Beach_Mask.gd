@@ -69,19 +69,17 @@ func generate_beach_mask2(ocean_mask: Dictionary, distance: int, res_scale : flo
 	# Returns a Sparse Dictionary[Vector2, bool] containing ONLY beach cells.
 # True = Within 'distance' of the ocean.
 func generate_beach_mask(
-	ocean_mask: Dictionary, 
-	width: int, 
-	height: int, 
-	distance: int, 
-	res_scale: float = 1.0
-) -> Dictionary[Vector2, bool]:
+	world_data: World_Data
+) -> void:
+	var res_scale: float = world_data.res_scale
+	var ocean_mask: Dictionary = world_data.mask_data["ocean"]
+	var width: int = world_data.grid_width
+	var height: int = world_data.grid_height
+	var distance: int = world_data.beach_distance
 	
 	var max_dist: int = int(distance * res_scale)
 	var beach_mask: Dictionary[Vector2, bool] = {}
-	
-	# If distance is 0, there are no beaches
-	if max_dist <= 0:
-		return beach_mask
+
 
 	# --- OPTIMIZATION 1: PRIMITIVE QUEUE ---
 	# We use Vector3(x, y, current_distance) instead of instantiating 
@@ -133,4 +131,4 @@ func generate_beach_mask(
 				beach_mask[neighbor] = true
 				queue.append(Vector3(neighbor.x, neighbor.y, current_dist + 1.0))
 
-	return beach_mask
+	world_data.mask_data["beach"] = beach_mask
