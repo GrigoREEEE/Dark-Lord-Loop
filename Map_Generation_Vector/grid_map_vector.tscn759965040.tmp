@@ -7,7 +7,6 @@
 [node name="Grid_Map_Vector" type="Node2D" unique_id=1883286590 node_paths=PackedStringArray("river_mode_selector", "save_button")]
 texture_filter = 2
 script = ExtResource("1_1e54l")
-hex_size = 6.0
 river_mode_selector = NodePath("Map_UI/RiverModeSelector")
 save_button = NodePath("Map_UI/SaveButton")
 

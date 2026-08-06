@@ -70,7 +70,7 @@ func _on_check_height_button_pressed():
 	var y_val: int = Y_input.text.to_int()
 	var pos = Vector2(x_val, y_val)
 	
-	var elevation: float = get_elevation_at(map.terrain_data, x_val, y_val)
+	var elevation: float = get_elevation_at(map.world_data.map_data["terrain"], x_val, y_val)
 	
 	if elevation != -1.0:
 		var output = "Pos(%d, %d) | Height: %.2f" % [x_val, y_val, elevation]

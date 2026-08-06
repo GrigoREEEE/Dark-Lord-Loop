@@ -132,33 +132,21 @@ func setup_river(
 			Profiler.start("River Expanding")
 			#river_expander.widen_river_iterative(world_data, my_river, 3.0 * world_data.res_scale, 0.5 * world_data.res_scale)
 			Profiler.end("River Expanding")
-			#Profiler.start("River merge")
-			#river_expander.merge_segments(my_river, to_merge)
-			#Profiler.end("River merge")
-			# --- IN-PLACE DICTIONARY UPDATE ---
-			#Profiler.start("River Delta")
-			#var temp_delta = delta_maker.create_delta_mask2(my_river)
-			#mask_data["delta"].clear()
-			#mask_data["delta"].merge(temp_delta)
-			#### Make the delta
-			#delta_maker.generate_delta(my_river, mask_data["ocean"], delta_streams, noise_seed)
-			## Route to map_data["terrain"]
-			#delta_maker.naturalize_delta_islands(map_data["terrain"], my_river, mask_data["delta"])
-			#delta_maker.erode_delta_edges(map_data["terrain"], mask_data["delta"], noise_seed)
-			## --- IN-PLACE DICTIONARY UPDATE ---
-			#temp_delta = delta_maker.create_delta_mask2(my_river,3)
-			#mask_data["delta"].clear()
-			#mask_data["delta"].merge(temp_delta)
-			#Profiler.end("River Delta")
-		my_river.merge_short_tail_segment(10)
-		my_river.backtrack_path_for_delta(50)
-		delta_generator.generate_delta(
-			world_data,
-			my_river,
-			12,       # Max total streams
-			8,        # Branch interval (x cells)
-			PI / 2.0  # Angle variance
-			)
+			Profiler.start("River Delta Generation")
+			## Scale the length and interval by res_scale so it fits any map size
+			#var max_stream_length = int(100 * world_data.res_scale)
+			#var branch_interval = int(10 * world_data.res_scale)
+			#var regions_back = 1 
+			#
+			#delta_generator.generate_delta(
+				#world_data,
+				#my_river,
+				#max_stream_length,
+				#branch_interval,
+				#regions_back
+			#)
+			#Profiler.end("River Delta Generation")
+
 		Profiler.end("total river generation")
 		# Pass map_data["river"] instead of mask_data["river"]
 		add_river_regions_to_system_mask(my_river, world_data.map_data["river"])

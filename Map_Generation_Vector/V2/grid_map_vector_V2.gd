@@ -1,5 +1,53 @@
 extends Node2D
 
+@export var hex_size: float = 12.0 # The radius from the center to a corner
+var _hex_cache: Array[Dictionary] = [] # Stores { "points": PackedVector2Array, "color": Color }
+var _multimesh: MultiMesh
+var _mm_instance: MultiMeshInstance2D
+
+func _setup_hex_multimesh():
+	_mm_instance = MultiMeshInstance2D.new()
+	add_child(_mm_instance)
+	
+	_multimesh = MultiMesh.new()
+	_multimesh.transform_format = MultiMesh.TRANSFORM_2D
+	_multimesh.use_colors = true
+	
+	# 1. Create a single hexagon mesh
+	var arrays = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	
+	var verts = PackedVector2Array()
+	var indices = PackedInt32Array()
+	
+	# Center point (Index 0)
+	verts.append(Vector2.ZERO) 
+	
+	# The 6 corners (Indices 1 through 6)
+	for i in range(6):
+		var angle_rad = deg_to_rad(60 * i - 30)
+		verts.append(Vector2(cos(angle_rad) * hex_size, sin(angle_rad) * hex_size))
+		
+	# Build 6 triangles connecting the center to the edges
+	for i in range(6):
+		indices.append(0)       # Center
+		indices.append(i + 1)   # Current corner
+		
+		var next_corner = i + 2
+		if next_corner > 6:
+			next_corner = 1
+		indices.append(next_corner) # Next corner
+		
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_INDEX] = indices
+	
+	var hex_mesh = ArrayMesh.new()
+	hex_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	
+	# 2. Assign the mesh
+	_multimesh.mesh = hex_mesh
+	_mm_instance.multimesh = _multimesh
+
 @export var river_mode_selector: OptionButton
 @export var save_button: Button
 
@@ -39,30 +87,7 @@ var terrain_temperature_data: Dictionary[Vector2, float] = {}
 var lake_data: Dictionary[Vector2, Region] = {}
 var global_water_data: Dictionary[Vector2, Region] = {}
 var _rivers: Array[River] = []
-# --- Mask Holders ---
-#var _ocean_mask: Dictionary[Vector2, bool] = {} 
-#var _beach_mask: Dictionary[Vector2, bool] = {} 
-#var _delta_mask: Dictionary[Vector2, bool] = {} 
-#var _river_mask : Dictionary[Vector2, bool] = {} 
-#var _outer_valley_mask : Dictionary[Vector2, bool] = {}
-#var _lake_mask : Dictionary[Vector2, bool] = {}
 
-
-#var map_data : Dictionary[String, Dictionary] = {
-	#"terrain": {},
-	#"temperature": {},
-	#"river": {},
-	#"lake": {}
-#}
-#
-#var mask_data: Dictionary[String, Dictionary] ={
-	#"ocean": {},
-	#"beach": {},
-	#"delta": {},
-	#"river": {},
-	#"vally_outer": {},
-	#"lake": {}
-#}
 
 func _ready():
 	#reference_width = 400
@@ -110,79 +135,169 @@ func _ready():
 	##map_data["temperature"] = temperature_data
 	#Profiler.end("Temperature Generation")
 
+	_setup_hex_multimesh()
 	update_map_visuals()
 
 # Cache the texture so we don't regenerate it every frame
 var _map_texture: ImageTexture
 
 func update_map_visuals():
-	# 1. Create a blank image buffer
-	var img = Image.create(world_data.grid_width, world_data.grid_height, false, Image.FORMAT_RGBA8)
-	
-	# --- 1. SET TERRAIN / CLIMATE / HEIGHT PIXELS ---
-	if not world_data.map_data["terrain"].is_empty() and not world_data.mask_data["ocean"].is_empty():
-		for pos in world_data.map_data["terrain"]:
-			if pos.x < 0 or pos.y < 0 or pos.x >= world_data.grid_width or pos.y >= world_data.grid_height:
-				continue
-			
-			var elevation = world_data.map_data["terrain"][pos]
-			var is_ocean = world_data.mask_data["ocean"].get(pos, false)
-			
-			var color: Color
-			
-			if current_map_mode == MapDisplayMode.TERRAIN:
-				var is_real_beach = world_data.mask_data["beach"].get(pos, false) or world_data.mask_data["delta"].get(pos, false)
-				color = _get_layered_color(elevation, is_ocean, is_real_beach)
-			elif current_map_mode == MapDisplayMode.HEIGHT_MAP:
-				color = _get_height_color(elevation)
-			else:
-				var is_winter = (current_map_mode == MapDisplayMode.WINTER_CLIMATE)
-				color = _get_climate_color(pos, is_winter)
-				
-			img.set_pixel(int(pos.x), int(pos.y), color)
-
-	# --- 2. SET RIVER PIXELS ---
-	if not _rivers.is_empty() and current_river_mode != RiverDisplayMode.HIDDEN:
+	if world_data.map_data["terrain"].is_empty():
+		return
 		
+	var valid_tiles = world_data.map_data["terrain"].keys()
+	_multimesh.instance_count = valid_tiles.size()
+	
+	var hex_width = sqrt(3.0) * hex_size
+	var hex_height = 2.0 * hex_size
+	var vertical_spacing = hex_height * 0.75
+	
+	# --- 1. PRE-CALCULATE RIVER COLORS ---
+	var river_colors: Dictionary = {}
+	
+	if not _rivers.is_empty() and current_river_mode != RiverDisplayMode.HIDDEN:
 		var base_river_color: Color = Color("2d5e87")
 		
 		for river in _rivers:
 			match current_river_mode:
-				
 				RiverDisplayMode.DEBUG_SEGMENTS:
 					if not river.segments.is_empty():
 						for i in range(river.segments.size()):
-							var region: Region = river.segments[i] # Unpack as Region
-							# Rainbow logic for segments
 							var hue: float = float(i % 8) / 8.0
 							var draw_color: Color = Color.from_hsv(hue, 0.8, 1.0)
-							
-							# Iterate through the Region's points array
-							for pos in region.points:
-								if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
-									img.set_pixel(int(pos.x), int(pos.y), draw_color)
+							for pos in river.segments[i].points:
+								river_colors[pos] = draw_color
 					else:
-						_draw_simple_river_path(img, river, Color.RED)
+						for pos in river.river_path:
+							river_colors[pos] = Color.RED
 
 				RiverDisplayMode.NORMAL:
 					if not river.segments.is_empty():
-						for region: Region in river.segments: # Type hint as Region
-							# Iterate through the Region's points array
+						for region in river.segments:
 							for pos in region.points:
-								if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
-									img.set_pixel(int(pos.x), int(pos.y), base_river_color)
+								river_colors[pos] = base_river_color
 					else:
-						_draw_simple_river_path(img, river, base_river_color)
+						for pos in river.river_path:
+							river_colors[pos] = base_river_color
 
-	# 4. Create or Update the GPU Texture
-	if _map_texture:
-		_map_texture.update(img)
-	else:
-		_map_texture = ImageTexture.create_from_image(img)
+	# --- 2. POPULATE THE MULTIMESH ---
+	var instance_index = 0
 	
-	# 5. Tell Godot to repaint
-	queue_redraw()
-	
+	for pos in valid_tiles:
+		if pos.x < 0 or pos.y < 0 or pos.x >= world_data.grid_width or pos.y >= world_data.grid_height:
+			continue
+			
+		var elevation = world_data.map_data["terrain"][pos]
+		var is_ocean = world_data.mask_data["ocean"].get(pos, false)
+		var color: Color
+		
+		# Determine base terrain color
+		if current_map_mode == MapDisplayMode.TERRAIN:
+			var is_real_beach = world_data.mask_data["beach"].get(pos, false) or world_data.mask_data["delta"].get(pos, false)
+			color = _get_layered_color(elevation, is_ocean, is_real_beach)
+		elif current_map_mode == MapDisplayMode.HEIGHT_MAP:
+			color = _get_height_color(elevation)
+		else:
+			var is_winter = (current_map_mode == MapDisplayMode.WINTER_CLIMATE)
+			color = _get_climate_color(pos, is_winter)
+			
+		# OVERRIDE WITH RIVER COLOR IF APPLICABLE
+		if river_colors.has(pos):
+			color = river_colors[pos]
+			
+		# Hexagon Positioning
+		var center_x = pos.x * hex_width
+		var center_y = pos.y * vertical_spacing
+		
+		if int(pos.y) % 2 == 1:
+			center_x += (hex_width / 2.0)
+			
+		var t = Transform2D()
+		t = t.translated(Vector2(center_x, center_y))
+		
+		_multimesh.set_instance_transform_2d(instance_index, t)
+		_multimesh.set_instance_color(instance_index, color)
+		
+		instance_index += 1
+
+# Helper to generate the 6 corners of a pointy-topped hex
+func _get_hex_points(center: Vector2, size: float) -> PackedVector2Array:
+	var points = PackedVector2Array()
+	for i in range(6):
+		# 60 degrees per corner, starting at -30 degrees for pointy-top
+		var angle_rad = deg_to_rad(60 * i - 30)
+		points.append(center + Vector2(cos(angle_rad) * size, sin(angle_rad) * size))
+	return points
+
+
+#func update_map_visuals():
+	## 1. Create a blank image buffer
+	#var img = Image.create(world_data.grid_width, world_data.grid_height, false, Image.FORMAT_RGBA8)
+	#
+	## --- 1. SET TERRAIN / CLIMATE / HEIGHT PIXELS ---
+	#if not world_data.map_data["terrain"].is_empty() and not world_data.mask_data["ocean"].is_empty():
+		#for pos in world_data.map_data["terrain"]:
+			#if pos.x < 0 or pos.y < 0 or pos.x >= world_data.grid_width or pos.y >= world_data.grid_height:
+				#continue
+			#
+			#var elevation = world_data.map_data["terrain"][pos]
+			#var is_ocean = world_data.mask_data["ocean"].get(pos, false)
+			#
+			#var color: Color
+			#
+			#if current_map_mode == MapDisplayMode.TERRAIN:
+				#var is_real_beach = world_data.mask_data["beach"].get(pos, false) or world_data.mask_data["delta"].get(pos, false)
+				#color = _get_layered_color(elevation, is_ocean, is_real_beach)
+			#elif current_map_mode == MapDisplayMode.HEIGHT_MAP:
+				#color = _get_height_color(elevation)
+			#else:
+				#var is_winter = (current_map_mode == MapDisplayMode.WINTER_CLIMATE)
+				#color = _get_climate_color(pos, is_winter)
+				#
+			#img.set_pixel(int(pos.x), int(pos.y), color)
+#
+	## --- 2. SET RIVER PIXELS ---
+	#if not _rivers.is_empty() and current_river_mode != RiverDisplayMode.HIDDEN:
+		#
+		#var base_river_color: Color = Color("2d5e87")
+		#
+		#for river in _rivers:
+			#match current_river_mode:
+				#
+				#RiverDisplayMode.DEBUG_SEGMENTS:
+					#if not river.segments.is_empty():
+						#for i in range(river.segments.size()):
+							#var region: Region = river.segments[i] # Unpack as Region
+							## Rainbow logic for segments
+							#var hue: float = float(i % 8) / 8.0
+							#var draw_color: Color = Color.from_hsv(hue, 0.8, 1.0)
+							#
+							## Iterate through the Region's points array
+							#for pos in region.points:
+								#if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
+									#img.set_pixel(int(pos.x), int(pos.y), draw_color)
+					#else:
+						#_draw_simple_river_path(img, river, Color.RED)
+#
+				#RiverDisplayMode.NORMAL:
+					#if not river.segments.is_empty():
+						#for region: Region in river.segments: # Type hint as Region
+							## Iterate through the Region's points array
+							#for pos in region.points:
+								#if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
+									#img.set_pixel(int(pos.x), int(pos.y), base_river_color)
+					#else:
+						#_draw_simple_river_path(img, river, base_river_color)
+#
+	## 4. Create or Update the GPU Texture
+	#if _map_texture:
+		#_map_texture.update(img)
+	#else:
+		#_map_texture = ImageTexture.create_from_image(img)
+	#
+	## 5. Tell Godot to repaint
+	#queue_redraw()
+	#
 func _get_height_color(e: float) -> Color:
 	# Convert elevation from range [-1.0, 1.0] to a normalized [0.0, 1.0] weight
 	var w = clamp(inverse_lerp(-1.0, 1.0, e), 0.0, 1.0)
@@ -197,16 +312,16 @@ func _get_height_color(e: float) -> Color:
 		# Top half: Yellow blending into Green
 		var local_w = (w - 0.5) * 2.0
 		return Color.YELLOW.lerp(Color.GREEN, local_w)
-
-# --- Helper to avoid code duplication ---
-func _draw_simple_river_path(img: Image, river, color: Color):
-	for pos in river.river_path:
-		if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
-			img.set_pixel(int(pos.x), int(pos.y), color)
-
-func _draw():
-	if _map_texture:
-		draw_texture_rect(_map_texture, Rect2(0, 0, world_data.grid_width * world_data.cell_size, world_data.grid_height * world_data.cell_size), false)
+#
+## --- Helper to avoid code duplication ---
+#func _draw_simple_river_path(img: Image, river, color: Color):
+	#for pos in river.river_path:
+		#if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
+			#img.set_pixel(int(pos.x), int(pos.y), color)
+#
+#func _draw():
+	#if _map_texture:
+		#draw_texture_rect(_map_texture, Rect2(0, 0, world_data.grid_width * world_data.cell_size, world_data.grid_height * world_data.cell_size), false)
 
 func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
 	if is_ocean:
