@@ -103,7 +103,7 @@ class_name World_Data
 
 
 @export_category("Masks")
-@export var beach_distance: int = 5
+@export var beach_distance: int = 2
 @export var mask_data: Dictionary[String, Dictionary] ={
 	"ocean": {},
 	"beach": {},

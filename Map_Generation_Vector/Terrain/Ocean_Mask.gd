@@ -105,26 +105,19 @@ func ocean_vs_land(
 		push_warning("Ocean seed point is not underwater! Check your terrain generation.")
 
 	# --- OPTIMIZATION 2: 4-WAY FLOOD FILL ---
-	# Cuts the loop iterations exactly in half compared to 8-way.
-	var directions: Array[Vector2] = [
-		Vector2(0, 1), Vector2(0, -1), Vector2(1, 0), Vector2(-1, 0)
-	]
+	# REMOVE the old directions array entirely.
 	
 	# --- STEP 3: EXECUTE FLOOD FILL ---
 	while open_set.size() > 0:
 		var current: Vector2 = open_set.pop_back()
 		
-		for d in directions:
-			var neighbor: Vector2 = current + d
+		# Swap to hex neighbors
+		var neighbors = global._get_hex_neighbors(current)
+		for neighbor in neighbors:
 			
-			# If we already marked it as ocean, skip it instantly.
-			# Because we use a Sparse Dictionary, we only check .has()
 			if is_ocean_map.has(neighbor):
 				continue
 				
-			# --- OPTIMIZATION 3: COMBINED LOOKUP ---
-			# We use .get(neighbor, 999.0). If the neighbor is out of bounds or missing 
-			# from terrain, it returns 999.0 (a mountain), which fails the < water_level check automatically.
 			if terrain.get(neighbor, 999.0) < water_level:
 				is_ocean_map[neighbor] = true
 				ocean_pool.all_cells.append(neighbor)

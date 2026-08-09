@@ -35,7 +35,7 @@ func generate_natural_river(
 	var current_grid_pos: Vector2 = start_pos
 	
 	# Track an invisible physical cursor to accumulate fractional movement (drift)
-	var current_physical: Vector2 = _get_hex_physical_pos(start_pos)
+	var current_physical: Vector2 = global._get_hex_physical_pos(start_pos)
 	
 	var current_dir: Vector2 = target_dir.normalized()
 	river.river_path.append(river.source)
@@ -76,7 +76,7 @@ func generate_natural_river(
 		var hex_diameter = sqrt(3.0)
 		current_physical += current_dir * hex_diameter
 		
-		var neighbors = _get_hex_neighbors(current_grid_pos)
+		var neighbors = global._get_hex_neighbors(current_grid_pos)
 		var best_neighbor = current_grid_pos
 		var best_dist = 999999.0
 		
@@ -84,7 +84,7 @@ func generate_natural_river(
 			if neighbor in river.river_path:
 				continue # Prevent looping back on itself
 				
-			var neighbor_physical = _get_hex_physical_pos(neighbor)
+			var neighbor_physical = global._get_hex_physical_pos(neighbor)
 			var dist = current_physical.distance_to(neighbor_physical)
 			
 			# Pick the neighbor whose center is closest to our floating cursor
@@ -100,7 +100,7 @@ func generate_natural_river(
 		
 		# Tether the cursor slightly back to the chosen hex center 
 		# so the physics don't desync wildly from the grid over long distances
-		var chosen_physical = _get_hex_physical_pos(current_grid_pos)
+		var chosen_physical = global._get_hex_physical_pos(current_grid_pos)
 		current_physical = current_physical.lerp(chosen_physical, 0.5)
 		
 		# --- C. BOUNDS & RECORD ---
@@ -138,44 +138,8 @@ func generate_natural_river(
 			return river
 	print(len(river.river_path))
 	return river
-	
-# Converts a hex grid coordinate into physical 2D space for accurate angle math
-func _get_hex_physical_pos(grid_pos: Vector2) -> Vector2:
-	var hex_width = sqrt(3.0)
-	var hex_height = 2.0
-	
-	var center_x = grid_pos.x * hex_width
-	var center_y = grid_pos.y * (hex_height * 0.75)
-	
-	# Apply the staggered offset for odd rows
-	if int(grid_pos.y) % 2 == 1:
-		center_x += (hex_width / 2.0)
-		
-	return Vector2(center_x, center_y)
 
-# Helper function to find the 6 true touching neighbors in an offset hex grid
-func _get_hex_neighbors(grid_pos: Vector2) -> Array[Vector2]:
-	var neighbors: Array[Vector2] = []
-	var is_odd_row: bool = int(grid_pos.y) % 2 != 0
-	
-	# East and West are always the same on both rows
-	neighbors.append(grid_pos + Vector2(1, 0))  # Right
-	neighbors.append(grid_pos + Vector2(-1, 0)) # Left
-	
-	if is_odd_row:
-		# Odd rows are shifted Right (+0.5 X)
-		neighbors.append(grid_pos + Vector2(0, -1))  # Top Left
-		neighbors.append(grid_pos + Vector2(1, -1))  # Top Right
-		neighbors.append(grid_pos + Vector2(0, 1))   # Bottom Left
-		neighbors.append(grid_pos + Vector2(1, 1))   # Bottom Right
-	else:
-		# Even rows are normal
-		neighbors.append(grid_pos + Vector2(-1, -1)) # Top Left
-		neighbors.append(grid_pos + Vector2(0, -1))  # Top Right
-		neighbors.append(grid_pos + Vector2(-1, 1))  # Bottom Left
-		neighbors.append(grid_pos + Vector2(0, 1))   # Bottom Right
-		
-	return neighbors
+
 
 func _add_unique_point(path: Array[Vector2], point: Vector2):
 	if path.is_empty() or path.back() != point:
@@ -434,7 +398,7 @@ func clean_river_path(river: River, ocean_mask: Dictionary):
 		#if current == next:
 			#continue
 			#
-		#var current_neighbors = _get_hex_neighbors(current)
+		#var current_neighbors = global._get_hex_neighbors(current)
 		#
 		## If the next tile is a true hex neighbor, no gap exists!
 		#if next in current_neighbors:
@@ -442,7 +406,7 @@ func clean_river_path(river: River, ocean_mask: Dictionary):
 		#else:
 			## A gap exists! We jumped diagonally across a non-touching hex.
 			## We must find a tile that touches BOTH 'current' and 'next' to bridge them.
-			#var next_neighbors = _get_hex_neighbors(next)
+			#var next_neighbors = global._get_hex_neighbors(next)
 			#var bridge_found = false
 			#
 			#for neighbor in current_neighbors:
@@ -458,7 +422,7 @@ func clean_river_path(river: River, ocean_mask: Dictionary):
 	#river.river_path = new_path
 #
 ## Helper function to find the 6 true touching neighbors in an offset hex grid
-#func _get_hex_neighbors(grid_pos: Vector2) -> Array[Vector2]:
+#func global._get_hex_neighbors(grid_pos: Vector2) -> Array[Vector2]:
 	#var neighbors: Array[Vector2] = []
 	#var is_odd_row: bool = int(grid_pos.y) % 2 != 0
 	#

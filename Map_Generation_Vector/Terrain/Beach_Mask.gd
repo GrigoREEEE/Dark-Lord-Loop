@@ -77,56 +77,47 @@ func generate_beach_mask(
 	var height: int = world_data.grid_height
 	var distance: int = world_data.beach_distance
 	
-	var max_dist: int = int(distance * res_scale)
+	var max_dist: int = distance #int(distance * res_scale)
 	var beach_mask: Dictionary[Vector2, bool] = {}
 
 
 	# --- OPTIMIZATION 1: PRIMITIVE QUEUE ---
-	# We use Vector3(x, y, current_distance) instead of instantiating 
-	# thousands of heavy Dictionaries. This is drastically faster in GDScript.
 	var queue: Array[Vector3] = []
-	var directions: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+	# REMOVED directions array
 
 	# --- OPTIMIZATION 2: COASTLINE SEEDING ---
-	# Instead of loading the entire ocean into the queue, we ONLY look for land cells
-	# that are directly touching the ocean, and seed the queue with those.
 	for ocean_pos: Vector2 in ocean_mask:
-		for d in directions:
-			var neighbor: Vector2 = ocean_pos + d
+		# Swap to hex neighbors
+		var neighbors = global._get_hex_neighbors(ocean_pos)
+		for neighbor in neighbors:
 			
-			# Fast bounds check
 			if neighbor.x < 0 or neighbor.x >= width or neighbor.y < 0 or neighbor.y >= height:
 				continue
 				
-			# If it's Land (not in ocean_mask) and hasn't been added to the beach mask yet
 			if not ocean_mask.has(neighbor) and not beach_mask.has(neighbor):
 				beach_mask[neighbor] = true
 				queue.append(Vector3(neighbor.x, neighbor.y, 1.0))
 
 	# --- OPTIMIZATION 3: UNIFIED SPARSE DICTIONARY ---
-	# `beach_mask` acts as our visited list. We don't need a separate `visited` tracker.
 	var head: int = 0
 	
 	while head < queue.size():
 		var current: Vector3 = queue[head]
 		head += 1
-		
 		var current_dist: int = int(current.z)
 		
-		# Stop expanding this branch if we have reached the max beach depth
 		if current_dist >= max_dist:
 			continue
 			
 		var current_pos := Vector2(current.x, current.y)
 		
-		for d in directions:
-			var neighbor: Vector2 = current_pos + d
+		# Swap to hex neighbors
+		var neighbors = global._get_hex_neighbors(current_pos)
+		for neighbor in neighbors:
 			
-			# Fast bounds check
 			if neighbor.x < 0 or neighbor.x >= width or neighbor.y < 0 or neighbor.y >= height:
 				continue
 				
-			# Must be Land (not in ocean_mask) and not yet visited (not in beach_mask)
 			if not ocean_mask.has(neighbor) and not beach_mask.has(neighbor):
 				beach_mask[neighbor] = true
 				queue.append(Vector3(neighbor.x, neighbor.y, current_dist + 1.0))
