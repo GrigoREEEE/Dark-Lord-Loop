@@ -8,7 +8,8 @@ func generate_natural_river(
 	start_pos: Vector2,
 	target_dir: Vector2,
 	max_length: int = 1000000,
-	meander_intensity: float = 1.5
+	meander_intensity: float = 1.0,
+	start_progress: float = 0.0 # <--- NEW
 	) -> River:
 		
 	var width: int = world_data.grid_width
@@ -51,11 +52,13 @@ func generate_natural_river(
 	while step_count < max_steps:
 		step_count += 1
 		
-	# --- A. CALCULATE DESIRED DIRECTION ---
-		var progress: float = clamp(float(step_count) / 1000.0, 0.0, 1.0)
+		# --- A. CALCULATE DESIRED DIRECTION ---
 		
-		# 1. FREQUENCY: Higher intensity means it changes direction faster
-		var current_step_size: float = lerp(0.1, 1.2, progress) * meander_intensity
+		# Add the start_progress to the calculation so it skips the "straight" phase
+		var progress: float = clamp(start_progress + (float(step_count) / 1000.0), 0.0, 1.0)
+		var current_meander = lerp(0.1, meander_intensity, pow(progress, 2.0))
+		
+		var current_step_size: float = lerp(0.1, 1.2, progress) * current_meander
 		
 		noise_cursor += current_step_size
 		var noise_val = noise.get_noise_2d(noise_cursor, 0.0)

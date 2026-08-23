@@ -26,7 +26,10 @@ func generate_delta(
 	
 	var spawn_point: Vector2 = river.segments[(-1 * regions_back)].points[0]
 	var original_mouth: Vector2 = river.river_path.back()
-	var river_direction: Vector2 = spawn_point.direction_to(original_mouth)
+	# Convert grid points to physical hex space to get the true physical angle
+	var phys_spawn = global._get_hex_physical_pos(spawn_point)
+	var phys_mouth = global._get_hex_physical_pos(original_mouth)
+	var river_direction: Vector2 = phys_spawn.direction_to(phys_mouth)
 	
 	print("  -> [Delta Trace] Spawn Point: ", spawn_point, " | Original Mouth: ", original_mouth)
 	
@@ -100,9 +103,10 @@ func generate_stream(
 	max_length: int
 ) -> River:
 	var river_generator: River_Generator = River_Generator.new()
-	# Changed from PI/3 to PI/6 (30 degrees deviation from center)
 	var dir: Vector2 = get_rotated_direction(river_direction, side, (PI/6 - direction_correction))
-	return river_generator.generate_natural_river(world_data, source, dir, max_length)
+	
+	# Intensity: 1.5 | Start Progress: 0.8 (Already very wavy)
+	return river_generator.generate_natural_river(world_data, source, dir, max_length, 1.5, 0.8)
 	
 	
 func generate_smaller_streams(
@@ -132,12 +136,16 @@ func generate_smaller_streams(
 			
 		global_tracker["count"] += 1
 		
-		# Kept child branches tucked inward (between 10 and 30 degrees)
+		# Inside the for source in sources loop:
+		
 		var rotation : float = randf_range(PI/18, PI/6) 
-		var mouth_direction: Vector2 = source.direction_to(river_mouth)
+		var phys_source = global._get_hex_physical_pos(source)
+		var phys_mouth = global._get_hex_physical_pos(river_mouth)
+		var mouth_direction: Vector2 = phys_source.direction_to(phys_mouth)
 		var dir: Vector2 = get_rotated_direction(mouth_direction, side, rotation)
 		
-		var river: River = river_generator.generate_natural_river(world_data, source, dir, max_length)
+		# Intensity: 2.0 | Start Progress: 0.9 (Extremely wavy, chaotic delta mudflats)
+		var river: River = river_generator.generate_natural_river(world_data, source, dir, max_length, 2.0, 0.9)
 		
 		if river.river_path.is_empty():
 			continue 

@@ -134,18 +134,18 @@ func setup_river(
 			Profiler.end("River Expanding")
 			Profiler.start("River Delta Generation")
 			## Scale the length and interval by res_scale so it fits any map size
-			#var max_stream_length = int(100 * world_data.res_scale)
-			#var branch_interval = int(10 * world_data.res_scale)
-			#var regions_back = 1 
-			#
-			#delta_generator.generate_delta(
-				#world_data,
-				#my_river,
-				#max_stream_length,
-				#branch_interval,
-				#regions_back
-			#)
-			#Profiler.end("River Delta Generation")
+			var max_stream_length = int(100 * world_data.res_scale)
+			var branch_interval = int(2 * world_data.res_scale)
+			var regions_back = 2
+			
+			delta_generator.generate_delta(
+				world_data,
+				my_river,
+				max_stream_length,
+				branch_interval,
+				regions_back
+			)
+			Profiler.end("River Delta Generation")
 
 		Profiler.end("total river generation")
 		# Pass map_data["river"] instead of mask_data["river"]

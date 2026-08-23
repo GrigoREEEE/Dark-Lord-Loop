@@ -89,7 +89,7 @@ class_name World_Data
 	"start radius": 20.0,
 	"end radius": 30.0,
 	"start erosion": 0.5,
-	"end erosion": 0.6
+	"end erosion": 0.6q
 }
 
 
