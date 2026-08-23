@@ -89,17 +89,17 @@ class_name World_Data
 	"start radius": 20.0,
 	"end radius": 30.0,
 	"start erosion": 0.5,
-	"end erosion": 0.6q
+	"end erosion": 0.6
 }
 
 
 @export_category("Map Data")
 @export var map_data : Dictionary[String, Dictionary] = {
-	"terrain": {}, # Cell Height Data
-	"temperature": {}, # Cell Temperature Data
-	"river": {}, # Cell Temperature Data
-	"lake": {}
+	"terrain": {}, # Cell Height Data, Vector2: float
+	"temperature": {}, # Cell Temperature Data, vector2: float
+	"river": {} # All rivers, vector2: region, where every vector2 is a cell that is present in river, and region is some river's region.
 }
+
 
 
 @export_category("Masks")
@@ -119,5 +119,4 @@ var ocean: Water_Pool # World ocean
 
 @export_category("River_System")
 var main_river: River # Main river
-var _rivers: Array[River] = [] # An array of all major rivers.
-var _river_system: Array[Region] # All regions that are part of the river
+var river_system: Array[River]

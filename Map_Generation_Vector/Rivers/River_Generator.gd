@@ -9,8 +9,11 @@ func generate_natural_river(
 	target_dir: Vector2,
 	max_length: int = 1000000,
 	meander_intensity: float = 1.0,
-	start_progress: float = 0.0 # <--- NEW
-	) -> River:
+	start_progress: float = 0.0,
+	stop_on_collision: bool = true,
+	local_collision_mask: Dictionary = {},
+	gravity_override: float = 0.7
+):
 		
 	var width: int = world_data.grid_width
 	var height: int = world_data.grid_height
@@ -27,7 +30,7 @@ func generate_natural_river(
 	noise.seed = noise_seed
 	noise.frequency = 0.01 / res_scale 
 	
-	var gravity_strength: float = 0.7
+	var gravity_strength: float = gravity_override
 	var steer_strength: float = 0.5 
 	var noise_cursor: float = 0.1
 
@@ -75,22 +78,22 @@ func generate_natural_river(
 		current_dir = current_dir.lerp(target_dir, gravity_strength).normalized()
 		
 		# --- B. MOVE PHYSICAL CURSOR & PICK CLOSEST HEX ---
-		# Push the invisible cursor forward by roughly one hex width
 		var hex_diameter = sqrt(3.0)
 		current_physical += current_dir * hex_diameter
-		
+
 		var neighbors = global._get_hex_neighbors(current_grid_pos)
 		var best_neighbor = current_grid_pos
 		var best_dist = 999999.0
-		
+
 		for neighbor in neighbors:
-			if neighbor in river.river_path:
-				continue # Prevent looping back on itself
-				
+			# If we are NOT stopping on collisions, forbid stepping on our own path.
+			# If we ARE stopping on collisions, allow it so the collision check catches it!
+			if not stop_on_collision and neighbor in river.river_path:
+				continue 
+
 			var neighbor_physical = global._get_hex_physical_pos(neighbor)
 			var dist = current_physical.distance_to(neighbor_physical)
-			
-			# Pick the neighbor whose center is closest to our floating cursor
+
 			if dist < best_dist:
 				best_dist = dist
 				best_neighbor = neighbor
@@ -101,13 +104,11 @@ func generate_natural_river(
 			
 		current_grid_pos = best_neighbor
 		
-		# Tether the cursor slightly back to the chosen hex center 
-		# so the physics don't desync wildly from the grid over long distances
 		var chosen_physical = global._get_hex_physical_pos(current_grid_pos)
 		current_physical = current_physical.lerp(chosen_physical, 0.5)
 		
 		# --- C. BOUNDS & RECORD ---
-		
+
 		# 1. Universal Out-of-Bounds Check
 		if (current_grid_pos.x < 0 or current_grid_pos.x >= width or 
 			current_grid_pos.y < 0 or current_grid_pos.y >= height):
@@ -123,15 +124,28 @@ func generate_natural_river(
 			_add_unique_point(river.river_path, current_grid_pos)
 			ocean.rivers_in.append(river)
 			break
+
+		# 3. Check for Water Collisions (Other Rivers or Itself)
+		if stop_on_collision:
 			
-		# 3. Check for Collision with Another River
-		if river_data.has(current_grid_pos):
-			river.mouth = current_grid_pos
-			_add_unique_point(river.river_path, current_grid_pos)
-			var hit_region = river_data[current_grid_pos]
-			hit_region.rivers_in.append(river)
-			break
-			
+			# Hit another river globally OR hit a local delta stream?
+			if river_data.has(current_grid_pos) or local_collision_mask.has(current_grid_pos):
+				river.mouth = current_grid_pos
+				_add_unique_point(river.river_path, current_grid_pos)
+				
+				# Only try to append to rivers_in if it was a globally registered river
+				if river_data.has(current_grid_pos):
+					var hit_region = river_data[current_grid_pos]
+					if hit_region is Region: 
+						hit_region.rivers_in.append(river)
+				break
+				
+			# Hit its own path? (Self-intersection)
+			elif current_grid_pos in river.river_path:
+				river.mouth = current_grid_pos
+				_add_unique_point(river.river_path, current_grid_pos)
+				break
+
 		_add_unique_point(river.river_path, current_grid_pos)
 		
 		# 4. Check Maximum Length Limit

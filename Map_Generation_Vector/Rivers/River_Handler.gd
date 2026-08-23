@@ -123,19 +123,16 @@ func setup_river(
 		Profiler.end("River Path Cleaning")
 		## Break the river into segments
 		Profiler.start("River Segmenting")
-		my_river.create_segments(10 * world_data.res_scale)
+		my_river.create_segments(10 * world_data.res_scale, world_data)
 		Profiler.end("River Segmenting")
 		if type == "main":
-			Profiler.start("River Delta Resegment")
-			#to_merge = my_river.resegment_delta(mouth_segments, 1 * world_data.res_scale) + 1
-			Profiler.end("River Delta Resegment")
 			Profiler.start("River Expanding")
 			#river_expander.widen_river_iterative(world_data, my_river, 3.0 * world_data.res_scale, 0.5 * world_data.res_scale)
 			Profiler.end("River Expanding")
 			Profiler.start("River Delta Generation")
 			## Scale the length and interval by res_scale so it fits any map size
 			var max_stream_length = int(100 * world_data.res_scale)
-			var branch_interval = int(2 * world_data.res_scale)
+			var branch_interval = int(5 * world_data.res_scale)
 			var regions_back = 2
 			
 			delta_generator.generate_delta(

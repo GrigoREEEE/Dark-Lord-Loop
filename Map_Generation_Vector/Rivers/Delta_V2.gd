@@ -26,7 +26,7 @@ func generate_delta(
 	
 	var spawn_point: Vector2 = river.segments[(-1 * regions_back)].points[0]
 	var original_mouth: Vector2 = river.river_path.back()
-	# Convert grid points to physical hex space to get the true physical angle
+	
 	var phys_spawn = global._get_hex_physical_pos(spawn_point)
 	var phys_mouth = global._get_hex_physical_pos(original_mouth)
 	var river_direction: Vector2 = phys_spawn.direction_to(phys_mouth)
@@ -39,18 +39,27 @@ func generate_delta(
 	river.river_path = river.river_path.slice(0, split_index + 1)
 	river.mouth = spawn_point
 	
+	# --- NEW: LOCAL COLLISION MASK ---
+	var local_delta_mask: Dictionary = {}
+	# Seed it with the truncated parent river so streams don't loop backwards
+	for pt in river.river_path:
+		local_delta_mask[pt] = true
+	
 	# --- SAFE LEFT STREAM GENERATION ---
 	print("  -> [Delta Trace] Generating Main Left Stream...")
 	var attempts = 0
-	var max_attempts = 36 # 36 * PI/18 = 2PI (a full 360 circle).
+	var max_attempts = 36 
 	while attempts < max_attempts:
-		left_stream = generate_stream(world_data, river_direction, "left", spawn_point, direction_correction, max_length)
+		left_stream = generate_stream(world_data, river_direction, "left", spawn_point, direction_correction, max_length, local_delta_mask)
 		if left_stream.river_path.is_empty():
-			direction_correction += PI/18 # Adjusted to 10 degrees for smoother correction
+			direction_correction += PI/18 
 			attempts += 1
 			print("    -> [Delta Trace] Left stream empty. Rotating PI/18. Attempt: ", attempts)
 		else:
 			print("    -> [Delta Trace] Left stream SUCCESS. Length: ", left_stream.river_path.size())
+			# Add new path to the mask!
+			for pt in left_stream.river_path:
+				local_delta_mask[pt] = true
 			break
 			
 	if left_stream != null and not left_stream.river_path.is_empty():
@@ -61,13 +70,16 @@ func generate_delta(
 	direction_correction = 0
 	attempts = 0
 	while attempts < max_attempts:
-		right_stream = generate_stream(world_data, river_direction, "right", spawn_point, direction_correction, max_length)
+		right_stream = generate_stream(world_data, river_direction, "right", spawn_point, direction_correction, max_length, local_delta_mask)
 		if right_stream.river_path.is_empty():
-			direction_correction += PI/18 # Adjusted to 10 degrees
+			direction_correction += PI/18
 			attempts += 1
 			print("    -> [Delta Trace] Right stream empty. Rotating PI/18. Attempt: ", attempts)
 		else:
 			print("    -> [Delta Trace] Right stream SUCCESS. Length: ", right_stream.river_path.size())
+			# Add new path to the mask!
+			for pt in right_stream.river_path:
+				local_delta_mask[pt] = true
 			break
 			
 	if right_stream != null and not right_stream.river_path.is_empty():
@@ -81,13 +93,13 @@ func generate_delta(
 	
 	if left_stream != null and not left_stream.river_path.is_empty():
 		var left_stream_sources: Array[Vector2] = get_filtered_items(left_stream.river_path, interval)
-		print("    -> [Delta Trace] Left stream provided ", left_stream_sources.size(), " potential child sources.")
-		all_rivers.append_array(generate_smaller_streams(world_data, original_mouth, "right", interval, left_stream_sources, max_length, 0, max_recursion_depth, global_tracker))
+		# PASS river_direction INSTEAD OF original_mouth
+		all_rivers.append_array(generate_smaller_streams(world_data, river_direction, "right", interval, left_stream_sources, max_length, 0, max_recursion_depth, global_tracker, local_delta_mask))
 	
 	if right_stream != null and not right_stream.river_path.is_empty():
 		var right_stream_sources: Array[Vector2] = get_filtered_items(right_stream.river_path, interval)
-		print("    -> [Delta Trace] Right stream provided ", right_stream_sources.size(), " potential child sources.")
-		all_rivers.append_array(generate_smaller_streams(world_data, original_mouth, "left", interval, right_stream_sources, max_length, 0, max_recursion_depth, global_tracker))
+		# PASS river_direction INSTEAD OF original_mouth
+		all_rivers.append_array(generate_smaller_streams(world_data, river_direction, "left", interval, right_stream_sources, max_length, 0, max_recursion_depth, global_tracker, local_delta_mask))
 	
 	print("  -> [Delta Trace] Bundling ", all_rivers.size(), " total streams into Delta Region.")
 	_bundle_delta_region(river, all_rivers, regions_back)
@@ -100,13 +112,14 @@ func generate_stream(
 	side: String,
 	source: Vector2,
 	direction_correction : float,
-	max_length: int
+	max_length: int,
+	local_delta_mask: Dictionary # <--- NEW
 ) -> River:
 	var river_generator: River_Generator = River_Generator.new()
 	var dir: Vector2 = get_rotated_direction(river_direction, side, (PI/6 - direction_correction))
 	
-	# Intensity: 1.5 | Start Progress: 0.8 (Already very wavy)
-	return river_generator.generate_natural_river(world_data, source, dir, max_length, 1.5, 0.8)
+	# Pass the local mask so it knows to stop
+	return river_generator.generate_natural_river(world_data, source, dir, max_length, 1.5, 0.8, false, local_delta_mask)
 	
 	
 func generate_smaller_streams(
@@ -118,7 +131,8 @@ func generate_smaller_streams(
 	max_length: int,
 	current_depth: int,
 	max_depth: int,
-	global_tracker: Dictionary
+	global_tracker: Dictionary,
+	local_delta_mask: Dictionary # <--- NEW
 ) -> Array[River]:
 	
 	var rivers_to_return: Array[River] = []
@@ -136,19 +150,21 @@ func generate_smaller_streams(
 			
 		global_tracker["count"] += 1
 		
-		# Inside the for source in sources loop:
-		
 		var rotation : float = randf_range(PI/18, PI/6) 
 		var phys_source = global._get_hex_physical_pos(source)
 		var phys_mouth = global._get_hex_physical_pos(river_mouth)
 		var mouth_direction: Vector2 = phys_source.direction_to(phys_mouth)
 		var dir: Vector2 = get_rotated_direction(mouth_direction, side, rotation)
 		
-		# Intensity: 2.0 | Start Progress: 0.9 (Extremely wavy, chaotic delta mudflats)
-		var river: River = river_generator.generate_natural_river(world_data, source, dir, max_length, 2.0, 0.9)
+		# Pass the local mask down
+		var river: River = river_generator.generate_natural_river(world_data, source, dir, max_length, 2.0, 0.9, true, local_delta_mask)
 		
 		if river.river_path.is_empty():
 			continue 
+			
+		# --- NEW: UPDATE MASK WITH CHILD STREAM ---
+		for pt in river.river_path:
+			local_delta_mask[pt] = true
 			
 		var additional_rivers : Array[River] = []
 		var river_sources = get_filtered_items(river.river_path, river_spawn_period)
@@ -160,7 +176,7 @@ func generate_smaller_streams(
 			
 			additional_rivers = generate_smaller_streams(
 				world_data, river_mouth, side_to_use, river_spawn_period, 
-				river_sources, max_length, current_depth + 1, max_depth, global_tracker
+				river_sources, max_length, current_depth + 1, max_depth, global_tracker, local_delta_mask
 			)
 			
 		rivers_to_return.append(river)

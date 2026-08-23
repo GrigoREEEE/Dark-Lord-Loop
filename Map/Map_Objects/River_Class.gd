@@ -11,13 +11,18 @@ var is_proper : bool = true
 var enters_into : Water_Body
 var rivers_in : Array[River] = []
 
-# New function to partition the river into connected Region objects
-func create_segments(chunk_size: int) -> void:
+# Inside your River class
+
+func create_segments(chunk_size: int, world_data: World_Data) -> void:
 	# Clear any existing segments
 	segments.clear()
 	
 	if river_path.is_empty() or chunk_size <= 0:
 		return
+
+	# Register this entire River object to the global system
+	if not world_data.river_system.has(self):
+		world_data.river_system.append(self)
 
 	var current_points: Array[Vector2] = []
 	var previous_region: Region = null
@@ -27,37 +32,37 @@ func create_segments(chunk_size: int) -> void:
 		
 		# If this segment has reached the target size...
 		if current_points.size() >= chunk_size:
-			# Build the region and link it, then store it as the 'previous' for the next loop
-			previous_region = _build_and_link_region(current_points, previous_region)
-			
-			# Reset points array for the next segment
+			# Pass world_data down to the builder
+			previous_region = _build_and_link_region(current_points, previous_region, world_data)
 			current_points = []
 			
 	# If there are leftovers (the end of the river), add them as the final Region
 	if current_points.size() > 0:
-		_build_and_link_region(current_points, previous_region)
+		_build_and_link_region(current_points, previous_region, world_data)
 
 
-# Helper function to instantiate, populate, and connect a River Region
-func _build_and_link_region(points: Array[Vector2], prev_region: Region) -> Region:
+func _build_and_link_region(points: Array[Vector2], previous: Region, world_data: World_Data) -> Region:
 	var new_region = Region.new()
 	new_region.associated_water = self
-	# Populate Region Properties
-	# Using randi() for ID for now, but you could pass an incrementing counter if you prefer
-	new_region.id = randi() 
+	new_region.id = randi()
 	new_region.type = "Water"
 	new_region.subtype = "River Segment"
 	new_region.points = points.duplicate()
 	new_region.size = points.size()
 	
-	# Establish the bi-directional connection
-	if prev_region != null:
-		new_region.regions_connect.append(prev_region)
-		prev_region.regions_connect.append(new_region)
+	# Link to the previous region
+	if previous != null:
+		previous.regions_connect.append(new_region)
+		new_region.regions_connect.append(previous)
 		
-	# Add to the River's segment list
 	segments.append(new_region)
 	
+	# --- SYNCHRONIZE WITH GLOBAL DATA ---
+	var global_river_dict: Dictionary = world_data.map_data["river"]
+	
+	for pt in points:
+		global_river_dict[pt] = new_region
+		
 	return new_region
 
 
