@@ -9,6 +9,10 @@ extends Camera2D
 var is_dragging: bool = false
 var drag_start_mouse_pos: Vector2 = Vector2.ZERO
 
+func _ready():
+	zoom.x = min_zoom
+	zoom.y = min_zoom
+
 func _unhandled_input(event):
 	# 1. Handle Dragging (Middle Mouse or Right C=lick)
 	if event is InputEventMouseButton:

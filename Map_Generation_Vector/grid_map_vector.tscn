@@ -10,6 +10,7 @@ script = ExtResource("1_1e54l")
 hex_size = 6.0
 river_mode_selector = NodePath("Map_UI/RiverModeSelector")
 save_button = NodePath("Map_UI/SaveButton")
+water_level = null
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=719009694]
 position = Vector2(576, 324)

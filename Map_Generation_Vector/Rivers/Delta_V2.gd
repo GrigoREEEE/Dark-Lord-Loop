@@ -91,6 +91,8 @@ func generate_delta(
 	var global_tracker = { "count": 0, "max_total": 40 } 
 	var max_recursion_depth = 3
 	
+	# Inside generate_delta(), update the two recursive calls at the bottom:
+	
 	if left_stream != null and not left_stream.river_path.is_empty():
 		var left_stream_sources: Array[Vector2] = get_filtered_items(left_stream.river_path, interval)
 		# PASS river_direction INSTEAD OF original_mouth
@@ -113,18 +115,20 @@ func generate_stream(
 	source: Vector2,
 	direction_correction : float,
 	max_length: int,
-	local_delta_mask: Dictionary # <--- NEW
+	local_delta_mask: Dictionary 
 ) -> River:
 	var river_generator: River_Generator = River_Generator.new()
-	var dir: Vector2 = get_rotated_direction(river_direction, side, (PI/6 - direction_correction))
 	
-	# Pass the local mask so it knows to stop
-	return river_generator.generate_natural_river(world_data, source, dir, max_length, 1.5, 0.8, false, local_delta_mask)
+	# CHANGED: PI/12 (15 degrees) keeps the streams aimed much more directly at the coast
+	var dir: Vector2 = get_rotated_direction(river_direction, side, (PI/12 - direction_correction))
+	
+	return river_generator.generate_natural_river(world_data, source, dir, max_length, 1.5, 0.8, false, local_delta_mask, 0.35)
 	
 	
+# Update generate_smaller_streams to accept base_direction and pass a very low gravity (0.15)
 func generate_smaller_streams(
 	world_data: World_Data,
-	river_mouth: Vector2,
+	base_direction: Vector2, # <--- Changed from river_mouth
 	side: String,
 	river_spawn_period: int,
 	sources: Array[Vector2],
@@ -132,37 +136,34 @@ func generate_smaller_streams(
 	current_depth: int,
 	max_depth: int,
 	global_tracker: Dictionary,
-	local_delta_mask: Dictionary # <--- NEW
+	local_delta_mask: Dictionary 
 ) -> Array[River]:
 	
 	var rivers_to_return: Array[River] = []
 	
 	if current_depth >= max_depth:
-		print("      -> [Delta Trace] Hit max recursion depth (", max_depth, "). Aborting branch.")
 		return rivers_to_return
 		
 	var river_generator: River_Generator = River_Generator.new()
 	
 	for source in sources:
 		if global_tracker["count"] >= global_tracker["max_total"]:
-			print("      -> [Delta Trace] Global stream limit reached (", global_tracker["max_total"], "). Halting generation.")
 			return rivers_to_return
 			
 		global_tracker["count"] += 1
 		
 		var rotation : float = randf_range(PI/18, PI/6) 
-		var phys_source = global._get_hex_physical_pos(source)
-		var phys_mouth = global._get_hex_physical_pos(river_mouth)
-		var mouth_direction: Vector2 = phys_source.direction_to(phys_mouth)
-		var dir: Vector2 = get_rotated_direction(mouth_direction, side, rotation)
 		
-		# Pass the local mask down
-		var river: River = river_generator.generate_natural_river(world_data, source, dir, max_length, 2.0, 0.9, true, local_delta_mask)
+		# We no longer calculate a direction to the mouth. 
+		# We just fan out relative to the parent's general base_direction!
+		var dir: Vector2 = get_rotated_direction(base_direction, side, rotation)
+		
+		# Gravity: 0.15 allows the river to meander wildly without snapping back to a straight line
+		var river: River = river_generator.generate_natural_river(world_data, source, dir, max_length, 2.0, 0.9, true, local_delta_mask, 0.15)
 		
 		if river.river_path.is_empty():
 			continue 
 			
-		# --- NEW: UPDATE MASK WITH CHILD STREAM ---
 		for pt in river.river_path:
 			local_delta_mask[pt] = true
 			
@@ -172,10 +173,8 @@ func generate_smaller_streams(
 		if not river_sources.is_empty(): 
 			var side_to_use: String = "left" if side == "right" else "right"
 			
-			print("      -> [Delta Trace] Child stream spawned at depth ", current_depth, ". Spawning ", river_sources.size(), " sub-children.")
-			
 			additional_rivers = generate_smaller_streams(
-				world_data, river_mouth, side_to_use, river_spawn_period, 
+				world_data, base_direction, side_to_use, river_spawn_period, 
 				river_sources, max_length, current_depth + 1, max_depth, global_tracker, local_delta_mask
 			)
 			

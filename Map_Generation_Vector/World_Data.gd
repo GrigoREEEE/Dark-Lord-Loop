@@ -72,7 +72,7 @@ class_name World_Data
 }
 
 @export_category("River Generation")
-@export var delta_streams: Dictionary[int, int] = {3:1,2:2,1:2} #size and number of streams that form the delta
+@export var delta_streams: Dictionary[int, int] = {3:1,2:2,1:4} #size and number of streams that form the delta
 @export var bands_rivers: Dictionary[int, int] = {0:1, 1:1, 2:0, 3:0, 4:0, 5:0, 6:1, 7:1, 8:0}
 @export var mouth_segments: int = 3 #number of the original main river segments that get the mouth bonus
 @export var to_merge: int = 0 #number of the main river segments we merge to form delta

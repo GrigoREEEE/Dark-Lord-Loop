@@ -126,14 +126,14 @@ func generate_natural_river(
 			break
 
 		# 3. Check for Water Collisions (Other Rivers or Itself)
-		if stop_on_collision:
+		# ADD 'and step_count > 2' to grant a small grace period at the spawn point!
+		if stop_on_collision and step_count > 2:
 			
 			# Hit another river globally OR hit a local delta stream?
 			if river_data.has(current_grid_pos) or local_collision_mask.has(current_grid_pos):
 				river.mouth = current_grid_pos
 				_add_unique_point(river.river_path, current_grid_pos)
 				
-				# Only try to append to rivers_in if it was a globally registered river
 				if river_data.has(current_grid_pos):
 					var hit_region = river_data[current_grid_pos]
 					if hit_region is Region: 

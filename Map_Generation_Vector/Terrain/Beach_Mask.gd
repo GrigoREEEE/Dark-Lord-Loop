@@ -66,35 +66,53 @@ func generate_beach_mask2(ocean_mask: Dictionary, distance: int, res_scale : flo
 
 	return beach_mask
 	
-	# Returns a Sparse Dictionary[Vector2, bool] containing ONLY beach cells.
-# True = Within 'distance' of the ocean.
+# Returns a Sparse Dictionary[Vector2, bool] containing ONLY beach cells.
+# True = Within 'distance' of the ocean OR a river delta.
 func generate_beach_mask(
 	world_data: World_Data
 ) -> void:
 	var res_scale: float = world_data.res_scale
 	var ocean_mask: Dictionary = world_data.mask_data["ocean"]
+	var river_map: Dictionary = world_data.map_data["river"]
 	var width: int = world_data.grid_width
 	var height: int = world_data.grid_height
 	var distance: int = world_data.beach_distance
 	
-	var max_dist: int = distance #int(distance * res_scale)
+	var max_dist: int = distance 
 	var beach_mask: Dictionary[Vector2, bool] = {}
-
 
 	# --- OPTIMIZATION 1: PRIMITIVE QUEUE ---
 	var queue: Array[Vector3] = []
-	# REMOVED directions array
 
-	# --- OPTIMIZATION 2: COASTLINE SEEDING ---
-	for ocean_pos: Vector2 in ocean_mask:
-		# Swap to hex neighbors
-		var neighbors = global._get_hex_neighbors(ocean_pos)
+	# Helper lambda to quickly check if a cell is "Water that makes sand"
+	var is_sand_source = func(pos: Vector2) -> bool:
+		if ocean_mask.has(pos):
+			return true
+		if river_map.has(pos):
+			# Only generate beaches for deltas, not standard inland rivers
+			if river_map[pos].subtype == "River Delta":
+				return true
+		return false
+
+	# --- OPTIMIZATION 2: COASTLINE & DELTA SEEDING ---
+	# Collect all valid water cells to seed the beach from
+	var sand_sources: Array[Vector2] = []
+	sand_sources.append_array(ocean_mask.keys())
+	
+	for river_cell in river_map:
+		if river_map[river_cell].subtype == "River Delta":
+			sand_sources.append(river_cell)
+
+	# Seed the queue with land cells touching the water
+	for water_pos in sand_sources:
+		var neighbors = global._get_hex_neighbors(water_pos)
 		for neighbor in neighbors:
 			
 			if neighbor.x < 0 or neighbor.x >= width or neighbor.y < 0 or neighbor.y >= height:
 				continue
 				
-			if not ocean_mask.has(neighbor) and not beach_mask.has(neighbor):
+			# If it's not a sand source (meaning it is land), and hasn't been flagged yet
+			if not is_sand_source.call(neighbor) and not beach_mask.has(neighbor):
 				beach_mask[neighbor] = true
 				queue.append(Vector3(neighbor.x, neighbor.y, 1.0))
 
@@ -111,14 +129,14 @@ func generate_beach_mask(
 			
 		var current_pos := Vector2(current.x, current.y)
 		
-		# Swap to hex neighbors
 		var neighbors = global._get_hex_neighbors(current_pos)
 		for neighbor in neighbors:
 			
 			if neighbor.x < 0 or neighbor.x >= width or neighbor.y < 0 or neighbor.y >= height:
 				continue
 				
-			if not ocean_mask.has(neighbor) and not beach_mask.has(neighbor):
+			# Must be land (not ocean/delta water) and not yet visited
+			if not is_sand_source.call(neighbor) and not beach_mask.has(neighbor):
 				beach_mask[neighbor] = true
 				queue.append(Vector3(neighbor.x, neighbor.y, current_dist + 1.0))
 

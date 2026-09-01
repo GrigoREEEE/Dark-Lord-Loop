@@ -61,8 +61,7 @@ func setup_river(
 	var ocean_id: Ocean_Identification = Ocean_Identification.new()
 	var beach_id: Beach_Identification = Beach_Identification.new()
 	var river_expander: River_Widener = River_Widener.new()
-	var delta_maker: Delta = Delta.new()
-	var delta_generator: Delta_V2 = Delta_V2.new()
+	var delta_maker: Delta_Hex_Sandbox = Delta_Hex_Sandbox.new()
 	var my_river: River
 	var river_start_pos : Vector2 = Vector2.ZERO
 	var river_direction : Vector2 = Vector2.ZERO
@@ -81,7 +80,7 @@ func setup_river(
 	Profiler.start("River Path Generation")
 	# Pass map_data["river"] instead of mask_data["river"]
 	if type == "main": 
-		my_river = river_gen.generate_natural_river(world_data, river_start_pos, river_direction)
+		my_river = river_gen.generate_natural_river(world_data, river_start_pos, river_direction,100000,2, 0.3)
 	else:
 		print("SMall river starts at %s" % river_start_pos)
 		my_river = small_river_gen.generate_small_natural_river(world_data, river_start_pos)
@@ -123,30 +122,34 @@ func setup_river(
 		Profiler.end("River Path Cleaning")
 		## Break the river into segments
 		Profiler.start("River Segmenting")
-		my_river.create_segments(10 * world_data.res_scale, world_data)
+		my_river.create_segments(5 * world_data.res_scale, world_data)
 		Profiler.end("River Segmenting")
 		if type == "main":
 			Profiler.start("River Expanding")
-			#river_expander.widen_river_iterative(world_data, my_river, 3.0 * world_data.res_scale, 0.5 * world_data.res_scale)
+			river_expander.widen_river_iterative(world_data, my_river, 3.0 * world_data.res_scale, 0.5 * world_data.res_scale, true)
+			#river_expander.merge_segments(my_river, 3)
 			Profiler.end("River Expanding")
-			Profiler.start("River Delta Generation")
-			## Scale the length and interval by res_scale so it fits any map size
-			var max_stream_length = int(100 * world_data.res_scale)
-			var branch_interval = int(5 * world_data.res_scale)
-			var regions_back = 2
+			#Profiler.start("River Delta Generation")
+			#delta_maker.generate_delta(my_river,world_data)
+			#Profiler.end("River Delta Generation")
+			#Profiler.start("Delta Mask Making")
+			#delta_maker.create_delta_mask(world_data,my_river,1)
+			#Profiler.end("Delta Mask Making")
+			#Profiler.start("Delta Naturalization")
+			#delta_maker.naturalize_delta_islands(world_data,my_river)
+			#Profiler.end("Delta Naturalization")
+			#Profiler.start("Delta Erosion")
+			#delta_maker.erode_delta_edges_hex(world_data)
+			#Profiler.end("Delta Erosion")
+			#Profiler.start("Beach Mask Making")
+			#beach_id.generate_beach_mask(world_data)
+			#Profiler.end("Beach Mask Making")
 			
-			delta_generator.generate_delta(
-				world_data,
-				my_river,
-				max_stream_length,
-				branch_interval,
-				regions_back
-			)
-			Profiler.end("River Delta Generation")
 
 		Profiler.end("total river generation")
 		# Pass map_data["river"] instead of mask_data["river"]
 		add_river_regions_to_system_mask(my_river, world_data.map_data["river"])
+
 		return my_river
 
 # Updated parameter name to river_data

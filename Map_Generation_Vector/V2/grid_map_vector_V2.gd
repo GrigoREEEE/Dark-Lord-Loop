@@ -1,6 +1,6 @@
 extends Node2D
 
-@export var hex_size: float = 12.0 # The radius from the center to a corner
+@export var hex_size: float = 24.0 # The radius from the center to a corner
 var _hex_cache: Array[Dictionary] = [] # Stores { "points": PackedVector2Array, "color": Color }
 var _multimesh: MultiMesh
 var _mm_instance: MultiMeshInstance2D
@@ -91,8 +91,8 @@ var _rivers: Array[River] = []
 
 func _ready():
 	#reference_width = 400
-	var noise_seed = 1599947545 #randi() # 177024239 #randi() #58196215 #randi() #663202794#
-	#print("Noise seed is: %s" % noise_seed)
+	var noise_seed = 15054720 #randi() #1599947545 #randi() # 177024239 #randi() #58196215 #randi() #663202794#
+	print("Noise seed is: %s" % noise_seed)
 	
 	var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	var _winding_noise: FastNoiseLite = FastNoiseLite.new()
@@ -107,6 +107,7 @@ func _ready():
 	var ocean_id: Ocean_Identification = Ocean_Identification.new()
 	var beach_id: Beach_Identification = Beach_Identification.new()
 	var river_handler : River_Handler = River_Handler.new()
+	print(world_data.grid_width)
 	
 	var global_ocean: Water_Pool = Water_Pool.new()
 	global_ocean.type = "Ocean"
@@ -230,74 +231,7 @@ func _get_hex_points(center: Vector2, size: float) -> PackedVector2Array:
 	return points
 
 
-#func update_map_visuals():
-	## 1. Create a blank image buffer
-	#var img = Image.create(world_data.grid_width, world_data.grid_height, false, Image.FORMAT_RGBA8)
-	#
-	## --- 1. SET TERRAIN / CLIMATE / HEIGHT PIXELS ---
-	#if not world_data.map_data["terrain"].is_empty() and not world_data.mask_data["ocean"].is_empty():
-		#for pos in world_data.map_data["terrain"]:
-			#if pos.x < 0 or pos.y < 0 or pos.x >= world_data.grid_width or pos.y >= world_data.grid_height:
-				#continue
-			#
-			#var elevation = world_data.map_data["terrain"][pos]
-			#var is_ocean = world_data.mask_data["ocean"].get(pos, false)
-			#
-			#var color: Color
-			#
-			#if current_map_mode == MapDisplayMode.TERRAIN:
-				#var is_real_beach = world_data.mask_data["beach"].get(pos, false) or world_data.mask_data["delta"].get(pos, false)
-				#color = _get_layered_color(elevation, is_ocean, is_real_beach)
-			#elif current_map_mode == MapDisplayMode.HEIGHT_MAP:
-				#color = _get_height_color(elevation)
-			#else:
-				#var is_winter = (current_map_mode == MapDisplayMode.WINTER_CLIMATE)
-				#color = _get_climate_color(pos, is_winter)
-				#
-			#img.set_pixel(int(pos.x), int(pos.y), color)
-#
-	## --- 2. SET RIVER PIXELS ---
-	#if not _rivers.is_empty() and current_river_mode != RiverDisplayMode.HIDDEN:
-		#
-		#var base_river_color: Color = Color("2d5e87")
-		#
-		#for river in _rivers:
-			#match current_river_mode:
-				#
-				#RiverDisplayMode.DEBUG_SEGMENTS:
-					#if not river.segments.is_empty():
-						#for i in range(river.segments.size()):
-							#var region: Region = river.segments[i] # Unpack as Region
-							## Rainbow logic for segments
-							#var hue: float = float(i % 8) / 8.0
-							#var draw_color: Color = Color.from_hsv(hue, 0.8, 1.0)
-							#
-							## Iterate through the Region's points array
-							#for pos in region.points:
-								#if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
-									#img.set_pixel(int(pos.x), int(pos.y), draw_color)
-					#else:
-						#_draw_simple_river_path(img, river, Color.RED)
-#
-				#RiverDisplayMode.NORMAL:
-					#if not river.segments.is_empty():
-						#for region: Region in river.segments: # Type hint as Region
-							## Iterate through the Region's points array
-							#for pos in region.points:
-								#if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
-									#img.set_pixel(int(pos.x), int(pos.y), base_river_color)
-					#else:
-						#_draw_simple_river_path(img, river, base_river_color)
-#
-	## 4. Create or Update the GPU Texture
-	#if _map_texture:
-		#_map_texture.update(img)
-	#else:
-		#_map_texture = ImageTexture.create_from_image(img)
-	#
-	## 5. Tell Godot to repaint
-	#queue_redraw()
-	#
+
 func _get_height_color(e: float) -> Color:
 	# Convert elevation from range [-1.0, 1.0] to a normalized [0.0, 1.0] weight
 	var w = clamp(inverse_lerp(-1.0, 1.0, e), 0.0, 1.0)
@@ -312,16 +246,6 @@ func _get_height_color(e: float) -> Color:
 		# Top half: Yellow blending into Green
 		var local_w = (w - 0.5) * 2.0
 		return Color.YELLOW.lerp(Color.GREEN, local_w)
-#
-## --- Helper to avoid code duplication ---
-#func _draw_simple_river_path(img: Image, river, color: Color):
-	#for pos in river.river_path:
-		#if pos.x >= 0 and pos.y >= 0 and pos.x < world_data.grid_width and pos.y < world_data.grid_height:
-			#img.set_pixel(int(pos.x), int(pos.y), color)
-#
-#func _draw():
-	#if _map_texture:
-		#draw_texture_rect(_map_texture, Rect2(0, 0, world_data.grid_width * world_data.cell_size, world_data.grid_height * world_data.cell_size), false)
 
 func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
 	if is_ocean:
@@ -354,29 +278,49 @@ func _get_layered_color(e: float, is_ocean: bool, is_real_beach: bool) -> Color:
 			return Color(0.824, 0.001, 0.824, 1.0)  # Error
 
 func _unhandled_input(event: InputEvent):
-	# Check if the event is a mouse button click
-	if event is InputEventMouseButton and event.pressed:
-		# Check if it is the Right Mouse Button
-		if event.button_index == MOUSE_BUTTON_RIGHT:
+	# Check if the event is a right mouse button click
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		
+		var local_mouse_pos = get_local_mouse_position()
+		
+		# --- 1. PIXEL TO AXIAL (q, r) ---
+		var q = (sqrt(3.0) / 3.0 * local_mouse_pos.x - 1.0 / 3.0 * local_mouse_pos.y) / hex_size
+		var r = (2.0 / 3.0 * local_mouse_pos.y) / hex_size
+		
+		# --- 2. AXIAL TO CUBE (q, r, s) ---
+		var s = -q - r
+		
+		# --- 3. ROUND CUBE TO NEAREST HEX ---
+		var q_round = round(q)
+		var r_round = round(r)
+		var s_round = round(s)
+		
+		var q_diff = abs(q_round - q)
+		var r_diff = abs(r_round - r)
+		var s_diff = abs(s_round - s)
+		
+		# Resolve rounding rounding discrepancies
+		if q_diff > r_diff and q_diff > s_diff:
+			q_round = -r_round - s_round
+		elif r_diff > s_diff:
+			r_round = -q_round - s_round
 			
-			# Get the mouse position relative to this node
-			var local_mouse_pos = get_local_mouse_position()
+		# --- 4. CUBE BACK TO ODD-R OFFSET GRID ---
+		var grid_y = int(r_round)
+		# Bitwise '& 1' checks if the row is odd so we subtract the correct offset
+		var grid_x = int(q_round + (int(r_round) - (int(r_round) & 1)) / 2.0)
+		
+		var grid_pos = Vector2(grid_x, grid_y)
+		
+		# --- ORIGINAL LOGIC ---
+		# Ensure we clicked INSIDE the map boundaries
+		if grid_x >= 0 and grid_x < world_data.grid_width and grid_y >= 0 and grid_y < world_data.grid_height:
 			
-			# Convert screen pixels to map grid coordinates
-			var grid_x = int(local_mouse_pos.x / world_data.cell_size)
-			var grid_y = int(local_mouse_pos.y / world_data.cell_size)
-			var grid_pos = Vector2(grid_x, grid_y)
+			var elevation = "N/A"
+			if not world_data.map_data["terrain"].is_empty() and world_data.map_data["terrain"].has(grid_pos):
+				elevation = str(snapped(world_data.map_data["terrain"][grid_pos], 0.0001))
 			
-			# Ensure we clicked INSIDE the map boundaries
-			if grid_x >= 0 and grid_x < world_data.grid_width and grid_y >= 0 and grid_y < world_data.grid_height:
-				
-				# Fetch elevation for extra debugging info
-				var elevation = "N/A"
-				if not world_data.map_data["terrain"].is_empty() and world_data.map_data["terrain"].has(grid_pos):
-					elevation = str(snapped(world_data.map_data["terrain"][grid_pos], 0.0001))
-				
-				# Print to the Output console
-				print("📍 Map Clicked - Grid Pos: ", grid_pos, " | Elevation: ", elevation)
+			print("📍 Map Clicked - Hex Grid Pos: ", grid_pos, " | Elevation: ", elevation)
 				
 # Retrieves the elevation data for a specific X, Y coordinate.
 # Returns the elevation as a float, or -1.0 if the cell doesn't exist.

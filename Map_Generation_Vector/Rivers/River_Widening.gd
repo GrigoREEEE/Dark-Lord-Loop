@@ -13,7 +13,10 @@ func widen_river_iterative(
 	world_data: World_Data,
 	river: River,
 	base_flow_gain: float, 
-	flow_increment: float 
+	flow_increment: float,
+	enable_conical_mouth: bool = false,
+	mouth_segments: int = 5, 
+	mouth_cost_discount: float = 0.10
 ):
 	
 	river.segment_flow.clear()
@@ -23,8 +26,9 @@ func widen_river_iterative(
 	var total_segments = river.segments.size()
 	
 	for i in range(total_segments):
-		# The budget still grows linearly downstream, but no exponential mouth explosion
-		var budget = base_flow_gain + (float(i) * flow_increment)
+		# We apply a slight curve to the budget so it doesn't explode exponentially at the mouth
+		var progress = float(i) / float(max(1, total_segments - 1))
+		var budget = base_flow_gain + (flow_increment * total_segments * pow(progress, 0.75))
 		
 		segment_budgets.append(budget)
 		river.segment_flow.append(budget)
@@ -38,14 +42,13 @@ func widen_river_iterative(
 	for pos in river.river_path:
 		river_cells_set[pos] = true
 	
-	var directions = [Vector2(0, 1), Vector2(0, -1), Vector2(1, 0), Vector2(-1, 0)]
+	# REMOVED 4-way directions array
 	
 	var segment_data_cache = []
 	for i in range(river.segments.size()):
 		var region: Region = river.segments[i]
 		var core_cells: Array[Vector2] = []
 		
-		# Loop through the Region's points
 		for cell in region.points:
 			if path_set.has(cell):
 				core_cells.append(cell)
@@ -77,14 +80,25 @@ func widen_river_iterative(
 			var region: Region = river.segments[i]
 			var seg_data = segment_data_cache[i]
 			
+			# --- NEW: CALCULATE CONICAL DISCOUNT ---
+			var is_mouth = enable_conical_mouth and i >= (river.segments.size() - mouth_segments)
+			var current_discount = 1.0
+			
+			if is_mouth:
+				var dist_from_end = (river.segments.size() - 1) - i
+				var cone_factor = float(dist_from_end) / float(max(1, mouth_segments - 1))
+				# Smoothly scales from mouth_cost_discount (at the very end) up to 1.0 (inland)
+				current_discount = lerp(mouth_cost_discount, 1.0, cone_factor)
+				
 			var candidates = []
 			var candidate_set = {}
 			
 			# Search neighbors around the Region's points
 			for cell in region.points:
-				for d in directions:
-					var neighbor = cell + d
-					
+				# FIX 1: Use 6-way hex neighbors
+				var neighbors = global._get_hex_neighbors(cell)
+				
+				for neighbor in neighbors:
 					if not world_data.map_data["terrain"].has(neighbor): continue
 					if river_cells_set.has(neighbor): continue
 					if candidate_set.has(neighbor): continue
@@ -109,12 +123,20 @@ func widen_river_iterative(
 					if height_diff > climb_tolerance:
 						cost += (height_diff - climb_tolerance) * flood_climb_cost
 						
-					# Distance Cost
+					# Calculate Physical Distance Cost
 					var min_dist = 999.0
+					var phys_neighbor = global._get_hex_physical_pos(neighbor)
+					
 					for core in seg_data.core_cells:
-						var d_val = core.distance_to(neighbor)
-						if d_val < min_dist: min_dist = d_val
+						var phys_core = global._get_hex_physical_pos(core)
+						var d_val = phys_core.distance_to(phys_neighbor)
+						if d_val < min_dist: 
+							min_dist = d_val
+							
 					cost += min_dist * effective_dist
+					
+					# --- NEW: APPLY CONICAL DISCOUNT ---
+					cost *= current_discount
 						
 					candidates.append({ "pos": neighbor, "cost": cost })
 					candidate_set[neighbor] = true
@@ -130,14 +152,12 @@ func widen_river_iterative(
 			var expensive_fill_count = 0
 			
 			for best in candidates:
-				# Restrict costly expansions, but allow unlimited free filling
 				if best.cost > 0.0 and expensive_fill_count >= expensive_fill_limit:
 					break
 				
 				if segment_budgets[i] >= best.cost:
 					segment_budgets[i] -= best.cost
 					
-					# Append to the Region's point array and update its size
 					region.points.append(best.pos)
 					region.size = region.points.size()
 					
